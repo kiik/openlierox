@@ -7,8 +7,8 @@
 #include "gusanos/base_action.h"
 using std::unique_ptr;
 
-#include <boost/lexical_cast.hpp>
-using boost::lexical_cast;
+#include "util/StringConv.h"
+#include "util/CRC32.h"
 #include <string>
 #include <map>
 #include <stdexcept>
@@ -71,7 +71,7 @@ typedef std::unique_ptr<STRING> ptr;
 	
 	virtual std::ostream& output(std::ostream& s) { s << str; return s; }
 	
-	virtual void calcCRC(boost::crc_32_type& crc)
+	virtual void calcCRC(CRC32& crc)
 	{
 		crc.process_bytes(str.data(), str.size());
 	}
@@ -84,12 +84,13 @@ struct INTEGER : public Token {
 typedef std::unique_ptr<INTEGER> ptr;
 #define CONSTRUCT(b_, e_) INTEGER(T& g, char const* b_, char const* e_)
 
-	// The literal comes from an untrusted mod. lexical_cast throws
-	// bad_lexical_cast when the value does not fit; degrade to a reported
-	// error and 0 rather than let the exception escape and crash the client.
+	// The literal comes from an untrusted mod. from_string reports failure
+	// through a flag rather than throwing; degrade to a reported error and 0
+	// rather than let a bad value slip through.
 	CONSTRUCT(b, e) : Token(g), v(0) {
-		try { v = lexical_cast<int>(std::string(b, e)); }
-		catch(boost::bad_lexical_cast&) { g.semanticError("integer literal out of range"); }
+		bool failed = false;
+		v = from_string<int>(std::string(b, e), failed);
+		if(failed) g.semanticError("integer literal out of range");
 	}
 	
 	INTEGER(T& g, int i) : Token(g), v(i) {}
@@ -104,7 +105,7 @@ typedef std::unique_ptr<INTEGER> ptr;
 	
 	virtual std::ostream& output(std::ostream& s) { s << v; return s; }
 	
-	virtual void calcCRC(boost::crc_32_type& crc)
+	virtual void calcCRC(CRC32& crc)
 	{
 		crc(v & 0xFF);
 		crc((v >> 8) & 0xFF);
@@ -121,8 +122,9 @@ typedef std::unique_ptr<NUMBER> ptr;
 #define CONSTRUCT(b_, e_) NUMBER(T& g, char const* b_, char const* e_)
 
 	CONSTRUCT(b, e) : Token(g), v(0) {
-		try { v = lexical_cast<double>(std::string(b, e)); }
-		catch(boost::bad_lexical_cast&) { g.semanticError("number literal out of range"); }
+		bool failed = false;
+		v = from_string<double>(std::string(b, e), failed);
+		if(failed) g.semanticError("number literal out of range");
 	}
 	
 	virtual double toDouble()
@@ -138,7 +140,7 @@ typedef std::unique_ptr<NUMBER> ptr;
 	
 	virtual std::ostream& output(std::ostream& s) { s << v; return s; }
 	
-	virtual void calcCRC(boost::crc_32_type& crc)
+	virtual void calcCRC(CRC32& crc)
 	{
 		//TODO: Less tolerance
 		int vi = (int)v;
@@ -954,7 +956,7 @@ return false;
  }}
 return true; }
 bool full() { return cur == 0 && !error; }
-void rule_action(GameEventDef* event, std::vector< boost::shared_ptr<BaseAction> >& actions) {
+void rule_action(GameEventDef* event, std::vector< std::shared_ptr<BaseAction> >& actions) {
 if(!matchToken(16)) return;
 std::unique_ptr<STRING> name(static_cast<STRING*>(curData.release()));
 next();
@@ -991,7 +993,7 @@ next();
 			if(param->flags & Parameters::Error)
 				semanticError("Malformed parameters", param->loc);
 			else
-				actions.push_back( boost::shared_ptr<BaseAction>( self->createAction(action, std::move(param)) ) );
+				actions.push_back( std::shared_ptr<BaseAction>( self->createAction(action, std::move(param)) ) );
 		}
 	
 }
@@ -1020,7 +1022,7 @@ rule_parameters(*param);
 }
 if(!matchToken(6)) return;
 next();
- std::vector< boost::shared_ptr<BaseAction> > actions; 
+ std::vector< std::shared_ptr<BaseAction> > actions; 
 while(cur == 16) {
 rule_action(event, actions);
 }

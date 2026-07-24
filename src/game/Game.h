@@ -10,8 +10,8 @@
 #ifndef __OLX_GAME_H__
 #define __OLX_GAME_H__
 
-#include <boost/signals2.hpp>
-#include <boost/function.hpp>
+#include "util/Signal.h"
+#include <functional>
 #include <vector>
 #include <list>
 #include <map>
@@ -160,7 +160,7 @@ public:
 	void resetWorms();
 	
 	template<typename T>
-	T ifWorm(int wormId, boost::function<T (CWorm*)> f, T fallback = T()) {
+	T ifWorm(int wormId, std::function<T (CWorm*)> f, T fallback = T()) {
 		CWorm* w = wormById(wormId, false);
 		if(w) return f(w);
 		return fallback;
@@ -174,9 +174,9 @@ public:
 	CWpnRest* weaponRestrictions();
 	
 	// they will be called in prepareGameloop and cleaned up after that
-	boost::signals2::signal<void()> prepareCallbacks;
+	Signal<void()> prepareCallbacks;
 	// they will be called in cleanupAfterGameloopEnd and the slot will be cleaned after that
-	boost::signals2::signal<void()> cleanupCallbacks;
+	Signal<void()> cleanupCallbacks;
 	
 	Result loadMap();
 	Result loadMod();

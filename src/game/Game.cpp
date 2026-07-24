@@ -1289,7 +1289,7 @@ Iterator<CWorm*>::Ref Game::aliveWorms() {
 }
 
 Iterator<CWorm*>::Ref Game::wormsOfClient(const CServerConnection* cl) {
-	return GetFilterIterator(worms())( boost::bind(&CWorm::getClient, _1) == cl );
+	return GetFilterIterator(worms())( [cl](CWorm* w){ return w->getClient() == cl; } );
 }
 
 CWorm* Game::wormById(int wormId, bool assertExisting) {

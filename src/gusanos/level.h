@@ -14,8 +14,9 @@
 #include <list>
 #include <cmath>
 #include "events.h"
-#include <boost/array.hpp>
-using boost::array;
+#include <array>
+#include <memory>
+using std::array;
 
 class Sprite;
 class LevelEffect;
@@ -59,8 +60,8 @@ struct LevelConfig
 	
 	std::vector<SpawnPoint> teamBases;
 	std::vector<SpawnPoint> spawnPoints;
-	boost::shared_ptr<GameEvent> gameStart;
-	boost::shared_ptr<GameEvent> gameEnd;
+	std::shared_ptr<GameEvent> gameStart;
+	std::shared_ptr<GameEvent> gameEnd;
 	bool darkMode;
 	bool doubleRes;
 };

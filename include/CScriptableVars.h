@@ -19,10 +19,7 @@
 #include <cassert>
 #include <iostream>
 #include <utility>
-#include <boost/typeof/typeof.hpp>
-#include <boost/type_traits/is_base_of.hpp>
-#include <boost/type_traits.hpp>
-#include <boost/signals2.hpp>
+#include <type_traits>
 
 #include "Color.h"
 #include "StringUtils.h"
@@ -462,12 +459,12 @@ template<typename T> T* ScriptVar_t::ptr() {
 
 
 template<typename T>
-T _CastScriptVarConst(const ScriptVar_t& s, T*, typename boost::enable_if_c<(GetType<T>::value <= SVT_CUSTOM-1), T>::type*) {
+T _CastScriptVarConst(const ScriptVar_t& s, T*, typename std::enable_if<(GetType<T>::value <= SVT_CUSTOM-1), T>::type*) {
 	return (T) s;
 }
 
 template<typename T>
-T _CastScriptVarConst(const ScriptVar_t& s, T*, typename boost::enable_if_c<boost::is_base_of<CustomVar,T>::value, T>::type*) {
+T _CastScriptVarConst(const ScriptVar_t& s, T*, typename std::enable_if<std::is_base_of<CustomVar,T>::value, T>::type*) {
 	return *s.as<T>();
 }
 

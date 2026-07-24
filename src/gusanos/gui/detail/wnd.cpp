@@ -6,8 +6,6 @@
 
 #include <iostream>
 #include <map>
-#include <boost/lexical_cast.hpp>
-using boost::lexical_cast;
 
 using std::cout;
 using std::cerr;

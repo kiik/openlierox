@@ -15,7 +15,7 @@
 #include <SDL.h>
 #include <cmath>
 #include <cstdlib>
-#include <boost/function.hpp>
+#include <functional>
 #include "CVec.h"
 #include "Color.h"
 
@@ -38,7 +38,7 @@ struct Line {
 	float distFromPoint2(const VectorD2<int>& vec) const;
 	float distFromPoint(const VectorD2<int>& vec) const;
 
-	void forEachPoint(boost::function<void (int, int)> f);
+	void forEachPoint(std::function<void (int, int)> f);
 };
 
 class CViewport;

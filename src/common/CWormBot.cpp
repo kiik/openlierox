@@ -116,7 +116,7 @@ SquareMatrix<int> getMaxFreeArea(VectorD2<int> p, uchar checkflag) {
 	uint map_w = game.gameMap()->GetWidth();
 	uint map_h = game.gameMap()->GetHeight();
 	uchar** pxflags = game.gameMap()->material->line;
-	boost::array<Material,256>& materials = game.gameMap()->materialArray();
+	std::array<Material,256>& materials = game.gameMap()->materialArray();
 
 	SquareMatrix<int> ret;
 	ret.v1 = p; ret.v2 = p;
@@ -226,7 +226,7 @@ NEW_ai_node_t* createNewAiNode(const VectorD2<int>& p) {
 // (depends on which of them is the absolute greatest)
 // HINT: don't lock the flags here (it's done in the caller)
 INLINE bool simpleTraceLine(VectorD2<int> start, VectorD2<int> dist, uchar checkflag) {
-	boost::array<Material,256>& materials = game.gameMap()->materialArray();
+	std::array<Material,256>& materials = game.gameMap()->materialArray();
 	unsigned char** pxflags = game.gameMap()->material->line;
 	if (!pxflags)  {  // The map has been probably shut down
 		warnings << "simpleTraceLine with pxflags==NULL" << endl;

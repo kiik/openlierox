@@ -339,8 +339,6 @@ target_include_directories(main PRIVATE
     "${OLX_ROOT}/libs/hawknl/include"
     "${OLX_ROOT}/libs/libzip"
     "${OLX_ROOT}/libs/lua"
-    "${OLX_ROOT}/libs/boost_process"
-    "${DEPS_DIR}/boost-hdr"
     # libgd's gd.h lives in its source dir; we link against gd_static
     # but CMake doesn't propagate include paths for it from libgd's
     # install target (since we never install).
@@ -352,7 +350,6 @@ target_include_directories(main PRIVATE
 
 target_compile_definitions(main PRIVATE
     NBREAKPAD
-    HAVE_BOOST
     SYSTEM_DATA_DIR="/data/data/openlierox.net/files")
 
 # DEDICATED_ONLY is checked with `#ifdef`, not by value; defining it to

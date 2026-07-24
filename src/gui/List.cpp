@@ -7,7 +7,6 @@
  *
  */
 
-#include <boost/bind/bind.hpp>
 #include "gui/List.h"
 #include "Debug.h"
 
@@ -15,7 +14,7 @@ void GuiListItem::setImage(const SmartPointer<DynDrawIntf>&) {
 	warnings << "GuiListItem::setImage not implemented" << endl;
 }
 
-typedef boost::function< Iterator<GuiListItem::Pt>::Ref() > DynamicListFct;
+typedef std::function< Iterator<GuiListItem::Pt>::Ref() > DynamicListFct;
 static GuiList::Pt dynamicGuiList(DynamicListFct f) {
 	struct DynamicList : GuiList {
 		DynamicListFct f;
@@ -29,6 +28,7 @@ static Iterator<GuiListItem::Pt>::Ref iteratorForGuiList(const GuiItemList& l) {
 	return GetIterator(l);
 }
 
-GuiList::Pt dynamicGuiList(boost::function< GuiItemList() > f) {
-	return dynamicGuiList((DynamicListFct) boost::bind(&iteratorForGuiList, boost::bind(f)));
+GuiList::Pt dynamicGuiList(std::function< GuiItemList() > f) {
+	DynamicListFct fct = [f]() { return iteratorForGuiList(f()); };
+	return dynamicGuiList(fct);
 }

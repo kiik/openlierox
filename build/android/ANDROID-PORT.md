@@ -119,9 +119,6 @@ The script also:
 - **Patches `libgd/src/gdkanji.c`** — guards the in-source `iconv_t`
   typedef and `<iconv.h>` include with `!defined(__ANDROID__)` so
   Bionic's iconv doesn't conflict.
-- **Symlinks `boost-hdr/boost → /usr/include/boost`** — OpenLieroX
-  needs Boost headers (header-only). The Linux/CI host must have
-  `libboost-dev` installed; the Android NDK does not ship Boost.
 - **`freealut` is cloned but unused.** Its CMake build doesn't survive
   `add_subdirectory()`, and OLX only needs `alutInit`, `alutExit`, and
   the two error helpers, so we ship them in
@@ -204,7 +201,7 @@ Sources are `file(GLOB_RECURSE ${OLX_ROOT}/src/*.cpp ...)` minus
 `/breakpad/`, `/MacMain`, and `/MacHelpers`. Vendored libs HawkNL,
 libzip, and Lua are compiled in.
 
-Compile defines: `NBREAKPAD`, `HAVE_BOOST`,
+Compile defines: `NBREAKPAD`,
 `SYSTEM_DATA_DIR="/data/data/net.openlierox/files"`.
 
 ## Java side
@@ -267,7 +264,6 @@ Prerequisites:
 - JDK 17 (Temurin or system).
 - Android SDK with `platforms;android-36`, `build-tools;36.0.0`,
   `platform-tools`, and `ndk;29.0.14206865`.
-- `libboost-dev` (for the `boost-hdr` symlink target).
 - `git`, `xz`, `zip` for asset / dep handling.
 
 Quick start:
@@ -312,7 +308,7 @@ avdmanager create avd -n olx -k 'system-images;android-34;default;x86_64'
 runs the same build-android.sh on `ubuntu-24.04`:
 
 1. Checkout with submodules.
-2. `apt-get install libboost-dev xz-utils zip`.
+2. `apt-get install xz-utils zip`.
 3. JDK 17 via `actions/setup-java@v4`.
 4. `android-actions/setup-android@v3`, then `sdkmanager` installs the
    pinned platforms/build-tools/NDK.

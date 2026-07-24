@@ -18,7 +18,7 @@
 #define __CCOMBOBOX_H__DEPRECATED_GUI__
 
 #include <list>
-#include <boost/signals2.hpp>
+#include "util/Signal.h"
 
 #include "StringUtils.h"
 #include "InputEvents.h"
@@ -202,7 +202,7 @@ public:
 	void	setAttachedVar(ScriptVar_t* v)	{ var = v; }
 	void	setAttachedVar(ScriptVarPtr_t* v)	{ varPtr = v; }
 
-	boost::signals2::signal<void (const GuiListItem::Pt&)> OnChangeSelection;
+	Signal<void (const GuiListItem::Pt&)> OnChangeSelection;
 };
 
 } // namespace DeprecatedGUI

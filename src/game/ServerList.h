@@ -13,7 +13,7 @@
 #include <string>
 #include <map>
 #include <list>
-#include <boost/shared_ptr.hpp>
+#include <memory>
 #include "Networking.h"
 #include "CScriptableVars.h"
 #include "ThreadVar.h"
@@ -28,7 +28,7 @@ enum {
 enum SvrListFilterType { SLFT_CustomSettings, SLFT_Lan, SLFT_Favourites };
 
 struct SvrListSettingsFilter {
-	typedef boost::shared_ptr<SvrListSettingsFilter> Ptr;
+	typedef std::shared_ptr<SvrListSettingsFilter> Ptr;
 	
 	std::map<std::string, ScriptVar_t> settings;
 	
@@ -93,7 +93,7 @@ struct server_t {
 	
 	bool	matches(SvrListFilterType filterType, SvrListSettingsFilter::Ptr settingsFilter = SvrListSettingsFilter::Ptr((SvrListSettingsFilter*)NULL));
 	
-	typedef boost::shared_ptr<server_t> Ptr;
+	typedef std::shared_ptr<server_t> Ptr;
 };
 
 
@@ -113,7 +113,7 @@ public:
 		// Returns true if the listener doesn't expect any more packets to arrive
 		virtual bool onResponse(const std::string& response) = 0;
 
-		typedef boost::shared_ptr<ResponseListener> Ptr;
+		typedef std::shared_ptr<ResponseListener> Ptr;
 		static Ptr null;
 	};
 
@@ -159,7 +159,7 @@ namespace DeprecatedGUI { class CListview; }
 // Server list
 class ServerList  {
 public:
-	typedef boost::shared_ptr<ServerList> Ptr;
+	typedef std::shared_ptr<ServerList> Ptr;
 
 	class Action  {
 	public:

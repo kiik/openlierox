@@ -16,7 +16,7 @@
 #include <string>
 #include <mutex>
 #include <condition_variable>
-#include <boost/function.hpp>
+#include <functional>
 #include "util/Result.h"
 #include "ThreadId.h"
 #include "SmartPointer.h"
@@ -68,7 +68,7 @@ public:
 
 	SmartPointer<ThreadPoolItem> start(ThreadFunc fct, void* param = NULL, const std::string& name = "unknown worker");
 	SmartPointer<ThreadPoolItem> start(Action* act, const std::string& name = "unknown worker"); // ThreadPool will own and free the Action
-	SmartPointer<ThreadPoolItem> start(boost::function<Result()> fct, const std::string& name = "unknown worker");
+	SmartPointer<ThreadPoolItem> start(std::function<Result()> fct, const std::string& name = "unknown worker");
 	bool wait(const SmartPointer<ThreadPoolItem>& item, int* status = NULL);
 	bool waitAll();
 	void dumpState(CmdLineIntf& cli) const;

@@ -7,7 +7,7 @@
 
 #include <string>
 #include <vector>
-#include <boost/function.hpp>
+#include <functional>
 #include "gusanos/luaapi/types.h"
 #include "gusanos/luaapi/context.h"
 #include "util/macros.h"
@@ -25,7 +25,7 @@ typedef std::vector<LuaCallbackRef> LuaCallbackList;
 struct LuaCallbackProxy {
 	LuaCallbackList& callbacks;
 	int nreturns;
-	typedef boost::function<void(LuaContext&,int)> PostHandler;
+	typedef std::function<void(LuaContext&,int)> PostHandler;
 	PostHandler postHandler;
 	LuaCallbackProxy(LuaCallbackList& callbacks_, int nreturns_, PostHandler postHandler_)
 		: callbacks(callbacks_), nreturns(nreturns_), postHandler(postHandler_) {}

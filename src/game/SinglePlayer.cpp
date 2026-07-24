@@ -7,7 +7,6 @@
  *
  */
 
-#include <boost/bind/bind.hpp>
 #include "SinglePlayer.h"
 #include "Options.h"
 #include "ConfigHandler.h"
@@ -216,7 +215,8 @@ bool SinglePlayerGame::startGame() {
 		extraCmds = explode(extraCmdStr, ";");
 		foreach(c, extraCmds) {
 			notes << "SinglePlayerGame: exec: " << *c << endl;
-			game.prepareCallbacks.connect(boost::bind(Execute, &stdoutCLI(), *c));
+			std::string cmd = *c;
+			game.prepareCallbacks.connect([cmd](){ Execute(&stdoutCLI(), cmd); });
 		}
 	}
 	
@@ -228,7 +228,7 @@ bool SinglePlayerGame::startGame() {
 		notes << "singlePlayer: special game mode " << standardGameMode->Name() << endl;
 	}
 	
-	game.cleanupCallbacks.connect(boost::bind(&SinglePlayer_CleanupAfterGameloopEnd));
+	game.cleanupCallbacks.connect([](){ SinglePlayer_CleanupAfterGameloopEnd(); });
 	
 	return true;
 }

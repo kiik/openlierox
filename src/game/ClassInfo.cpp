@@ -1,5 +1,5 @@
 #include <map>
-#include <boost/shared_ptr.hpp>
+#include <memory>
 #include "ClassInfo.h"
 #include "Debug.h"
 #include "util/macros.h"

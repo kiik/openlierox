@@ -15,8 +15,8 @@
 #include <vector>
 #include <list>
 #include <string>
-#include <boost/function.hpp>
-#include <boost/shared_ptr.hpp>
+#include <functional>
+#include <memory>
 #include "Ref.h"
 #include "Functors.h"
 #include "CodeAttributes.h"
@@ -247,8 +247,8 @@ typename Iterator<T>::Ref GetIterator(::Ref< Iterator<T> > i) { return i; }
 template < typename T >
 struct FilterIterator : public Iterator<T> {
 	typename Iterator<T>::Ref baseIter;
-	boost::function<bool(T)> predicate;
-	FilterIterator(typename Iterator<T>::Ref _i, boost::function<bool(T)> _pred)
+	std::function<bool(T)> predicate;
+	FilterIterator(typename Iterator<T>::Ref _i, std::function<bool(T)> _pred)
 	: baseIter(_i), predicate(_pred) { advanceToFiltered(); }
 	void advanceToFiltered() {
 		while(true) {
@@ -273,7 +273,7 @@ template<typename T>
 struct FilterIteratorBuilderHelper {
 	::Ref<Iterator<T> > i;
 	FilterIteratorBuilderHelper(::Ref<Iterator<T> > _i) : i(_i) {}
-	typename Iterator<T>::Ref operator()(boost::function<bool(T)> pred) {
+	typename Iterator<T>::Ref operator()(std::function<bool(T)> pred) {
 		return new FilterIterator<T>(i, pred);		
 	}
 };
@@ -300,18 +300,18 @@ struct ProxyIterator : public Iterator<T> {
 
 template<typename T>
 typename Iterator<T>::Ref FullCopyIterator(::Ref<Iterator<T> > i) {
-	boost::shared_ptr< std::vector<T> > copy( new std::vector<T>() );
+	std::shared_ptr< std::vector<T> > copy( new std::vector<T>() );
 	copy->reserve(i->size());
 	for_each_iterator(T, x, i)
 		copy->push_back(x->get());
-	return new ProxyIterator<T, boost::shared_ptr< std::vector<T> > >(GetIterator(*copy), copy);
+	return new ProxyIterator<T, std::shared_ptr< std::vector<T> > >(GetIterator(*copy), copy);
 }
 
 template<typename T>
 struct AnyHelper {
 	::Ref<Iterator<T> > i;
 	AnyHelper(::Ref<Iterator<T> > _i) : i(_i) {}
-	bool operator()(boost::function<bool(T)> pred) {
+	bool operator()(std::function<bool(T)> pred) {
 		return GetFilterIterator(i)(pred)->isValid();
 	}
 };

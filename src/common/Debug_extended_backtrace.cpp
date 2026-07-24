@@ -55,7 +55,7 @@
 #include <vector>
 #include <string>
 #include <cxxabi.h>
-#include <boost/shared_ptr.hpp>
+#include <memory>
 #include "Debug.h"
 #include "util/StringConv.h"
 
@@ -255,7 +255,7 @@ struct BfdSession {
 		abfd = NULL;
 	}
 };
-typedef std::map<std::string, boost::shared_ptr<BfdSession> > BfdSessionMap;
+typedef std::map<std::string, std::shared_ptr<BfdSession> > BfdSessionMap;
 static BfdSessionMap bfdSessions;
 
 static bfd* abfd = NULL;

@@ -5,7 +5,7 @@
 #ifndef OLX_CLASSINFO_H
 #define OLX_CLASSINFO_H
 
-#include <boost/function.hpp>
+#include <functional>
 #include <string>
 #include <stdint.h>
 
@@ -19,7 +19,7 @@ struct ClassInfo {
 	ClassId superClassId;
 	std::string name;
 	size_t memSize;
-	boost::function<BaseObject*()> createInstance;
+	std::function<BaseObject*()> createInstance;
 
 	bool isTypeOf(ClassId id) const;
 };

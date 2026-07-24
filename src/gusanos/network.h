@@ -4,7 +4,7 @@
 
 #include "netstream.h"
 #include <string>
-#include <boost/function.hpp>
+#include <functional>
 #include "luaapi/types.h"
 
 struct LuaEventDef

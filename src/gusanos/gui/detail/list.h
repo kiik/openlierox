@@ -5,12 +5,11 @@
 #include "llist.h"
 
 #include <string>
-#include <boost/lexical_cast.hpp>
+#include "util/StringConv.h"
 
 namespace OmfgGUI
 {
 
-	using boost::lexical_cast;
 
 	class List;
 
@@ -172,8 +171,8 @@ namespace OmfgGUI
 
 				bool operator()(ListNode* a, ListNode* b)
 				{
-					return lexical_cast<int>(a->getText(column))
-					       > lexical_cast<int>(b->getText(column));
+					return from_string<int>(a->getText(column))
+					       > from_string<int>(b->getText(column));
 				}
 
 				unsigned int column;

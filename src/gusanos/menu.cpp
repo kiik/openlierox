@@ -10,7 +10,6 @@
 #include "luaapi/context.h"
 #include "gui/omfggui_windows.h"
 #include "gconsole.h"
-#include <boost/bind/bind.hpp>
 #include <iostream>
 #include <list>
 #include <string>

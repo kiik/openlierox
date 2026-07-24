@@ -9,8 +9,7 @@
 #include <map>
 #include <set>
 #include <vector>
-#include <boost/shared_ptr.hpp>
-#include <boost/bind/bind.hpp>
+#include <memory>
 #include "Attr.h"
 #include "util/macros.h"
 #include "util/StaticVar.h"
@@ -27,8 +26,6 @@
 #include "Debug.h"
 #include "FindFile.h"
 #include "LieroX.h"
-
-using namespace boost::placeholders;
 
 static CServerConnection* attrUpdateByClientScope = NULL;
 static bool attrUpdateByServerScope = false;
@@ -205,7 +202,7 @@ void registerAttrDesc(AttrDesc& attrDesc) {
 	attrDescs.get()[AttribRef(&attrDesc)] = &attrDesc;
 }
 
-void iterAttrDescs(ClassId classId, bool withSuperClasses, boost::function<void(const AttrDesc* attrDesc)> callback) {
+void iterAttrDescs(ClassId classId, bool withSuperClasses, std::function<void(const AttrDesc* attrDesc)> callback) {
 	AttrDescs::iterator itStart = attrDescs->lower_bound(AttribRef::LowerLimit(classId));
 	AttrDescs::iterator itEnd = attrDescs->upper_bound(AttribRef::UpperLimit(classId));
 	for(AttrDescs::iterator it = itStart; it != itEnd; ++it)
@@ -225,7 +222,7 @@ static void _addAttrDesc(std::vector<const AttrDesc*>& vec, const AttrDesc* attr
 
 std::vector<const AttrDesc*> getAttrDescs(ClassId classId, bool withSuperClasses) {
 	std::vector<const AttrDesc*> vec;
-	boost::function<void(const AttrDesc* attrDesc)> callback = boost::bind(_addAttrDesc, boost::ref(vec), _1);
+	std::function<void(const AttrDesc* attrDesc)> callback = [&vec](const AttrDesc* attrDesc){ _addAttrDesc(vec, attrDesc); };
 	iterAttrDescs(classId, withSuperClasses, callback);
 	return vec;
 }
@@ -276,7 +273,7 @@ static void attrUpdateDebugHookPrint(ObjAttrRef a, const ScriptVar_t& oldValue, 
 	DumpCallstack(StdoutPrintFct(), &callstack[0], (int)callstack.size());
 }
 
-static StaticVar<boost::shared_ptr<std::vector<std::string> > > debugAttrHookList;
+static StaticVar<std::shared_ptr<std::vector<std::string> > > debugAttrHookList;
 
 static void attrUpdateDebugHook(ObjAttrRef a, const ScriptVar_t& oldValue, const ScriptVar_t& newValue, const std::vector<void*>& callstack) {
 	if(debugAttrHookList.get().get() == NULL) {

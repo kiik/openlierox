@@ -233,9 +233,6 @@ void OlxWriteCoreDump(const char* fileName)
 // all rest cases, except mingw
 #elif !defined(__MINGW32__)
 
-#ifdef GCOREDUMPER
-#include <google/coredumper.h>
-#endif
 #include <climits>
 #include <unistd.h>
 #include <sys/types.h>
@@ -243,7 +240,6 @@ void OlxWriteCoreDump(const char* fileName)
 #include <cstring>
 #include <cstdio>
 
-#if !defined(GCOREDUMPER)
 static void GdbWriteCoreDump(const char* fname) {
 	// WARNING: this is terribly slow like this
 	char gdbparam[PATH_MAX + 200];
@@ -261,7 +257,6 @@ static void GdbWriteCoreDump(const char* fname) {
 		pclose(p);
 	}
 }
-#endif
 
 void OlxWriteCoreDump(const char* file_postfix) {
 	char corefile[PATH_MAX + 100];
@@ -271,11 +266,7 @@ void OlxWriteCoreDump(const char* file_postfix) {
 	printf("writing coredump to %s\n", corefile);
 	
 	printf("dumping core ... "); fflush(0);
-#if defined(GCOREDUMPER)
-	WriteCoreDump(corefile);
-#else
 	GdbWriteCoreDump(corefile);
-#endif
 	printf("ready\n");
 }
 

@@ -9,7 +9,6 @@
 
 #include <SDL.h>
 #include <SDL_image.h>
-#include <boost/static_assert.hpp>
 
 #include "gusanos/allegro.h"
 #include "FindFile.h"

@@ -35,7 +35,7 @@ bool GameEvent::addAction( const string& name, const vector<string>& params )
 	map<string, BaseAction*(*)( const std::vector< std::string > &) >::iterator tempAction = gusGame.actionList.find(name);
 	if ( tempAction != gusGame.actionList.end() )
 	{
-		boost::shared_ptr<BaseAction> action ( tempAction->second(params) );
+		std::shared_ptr<BaseAction> action ( tempAction->second(params) );
 
 		actions.push_back( action );
 		return true;

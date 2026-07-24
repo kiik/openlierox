@@ -14,7 +14,7 @@
 //#include "luaapi/types.h"
 #include "script.h"
 #include "resource_base.h"
-#include <boost/cstdint.hpp>
+#include <stdint.h>
 
 #include <string>
 #include <vector>

@@ -4,7 +4,7 @@
 #include "resource_list.h"
 #include "resource_base.h"
 #include "gfx.h"
-#include <boost/cstdint.hpp>
+#include <stdint.h>
 
 #include "gusanos/allegro.h"
 #include <string>

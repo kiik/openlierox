@@ -27,9 +27,6 @@ extern "C" {
 }
 using std::cerr;
 using std::endl;
-#include <boost/lexical_cast.hpp>
-#include <boost/bind/bind.hpp>
-using boost::lexical_cast;
 
 
 static int l_baseObject_set(lua_State* L) {

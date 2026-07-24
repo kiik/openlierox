@@ -10,21 +10,15 @@
 #endif
 #include "game/CMap.h"
 
-#define BOOST_NO_MT
-#include <boost/pool/pool.hpp>
-
-static boost::pool<> particlePool(sizeof(SimpleParticle));
-
 void* SimpleParticle::operator new(size_t count)
 {
-	assert(count <= sizeof(SimpleParticle));
-	return particlePool.malloc();
+	return ::operator new(count);
 }
 
 
 void SimpleParticle::operator delete(void* block)
 {
-	particlePool.free(block);
+	::operator delete(block);
 }
 
 void SimpleParticle::think()

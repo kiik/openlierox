@@ -108,7 +108,6 @@ release we use, which would break `--shared-memory` linking.
 - libxml2 v2.13.5
 - libgd gd-2.3.3 (software map blitting helpers)
 - libcurl curl-8_10_1 (HTTP-only)
-- boost-hdr — symlink to `/usr/include/boost`
 
 **Vendored in-tree**:
 

@@ -5,14 +5,14 @@
 #ifndef OLX_PODFORCLASS_H
 #define OLX_PODFORCLASS_H
 
-#include <boost/type_traits/alignment_of.hpp>
+#include <utility>
 
 // workaround to warning: dereferencing type-punned pointer will break strict-aliasing rules
 // also get the correctly aligned ptr
 template<typename T>
 T* pointer_cast_and_align(const char* p) {
-	size_t p2 = (size_t)p + boost::alignment_of<T>::value;
-	p2 -= p2 % boost::alignment_of<T>::value;
+	size_t p2 = (size_t)p + alignof(T);
+	p2 -= p2 % alignof(T);
 	return (T*)p2;
 }
 
@@ -20,7 +20,7 @@ T* pointer_cast_and_align(const char* p) {
 // You must call init/uninit here yourself!
 template<typename T>
 struct PODForClass {
-	char data[sizeof(T) + boost::alignment_of<T>::value];
+	char data[sizeof(T) + alignof(T)];
 	T& get() { return *pointer_cast_and_align<T>(data); }
 	operator T&() { return get(); }
 	const T& get() const { return *pointer_cast_and_align<T>(data); }

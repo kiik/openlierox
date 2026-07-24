@@ -3,7 +3,7 @@
 
 #include "consoleitem.h"
 #include "util/text.h"
-#include <boost/function.hpp>
+#include <functional>
 #include <string>
 #include <map>
 
@@ -26,7 +26,7 @@ class TVariable : public Variable
 {
 public:
 	
-	typedef boost::function<void (T const&)> CallbackT;
+	typedef std::function<void (T const&)> CallbackT;
 	
 	TVariable(std::string name, T* src, T defaultValue, CallbackT const& callback = CallbackT() )
 	: Variable(name), m_src(src), m_defaultValue(defaultValue), m_callback(callback)

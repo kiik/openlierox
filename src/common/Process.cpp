@@ -12,71 +12,222 @@
 #include "Debug.h"
 #include "FindFile.h"
 
-#if ( ! defined(HAVE_BOOST) && defined(WIN32) ) || ( defined(_MSC_VER) && (_MSC_VER <= 1200) )
+#ifdef WIN32
 
 #include <windows.h>
+#include <streambuf>
+#include <istream>
+#include <ostream>
+#include <cstddef>
 
-struct ProcessIntern	// Stub
+namespace {
+
+// Write-only streambuf over a Windows pipe handle (the child's stdin).
+class PipeWriteBuf : public std::streambuf
 {
-	int dummy;
-	ProcessIntern(): dummy(0) {};
-	std::ostream & in(){ return std::cout; };
-	std::istream & out(){ return std::cin; };
-	void close() {  }
-	bool open( const std::string & cmd, std::vector< std::string > params, const std::string& working_dir )
+public:
+	PipeWriteBuf(HANDLE h) : m_handle(h) { setp(m_buf, m_buf + sizeof(m_buf)); }
+protected:
+	virtual int_type overflow(int_type c)
 	{
-		errors << "Dedicated server is not compiled into this version of OpenLieroX" << endl;
-		MessageBox( NULL, "ERROR: Dedicated server is not compiled into this version of OpenLieroX", "OpenLieroX", MB_OK );
-		return false;
+		if(!flushBuffer()) return traits_type::eof();
+		if(!traits_type::eq_int_type(c, traits_type::eof())) {
+			*pptr() = traits_type::to_char_type(c);
+			pbump(1);
+		}
+		return traits_type::not_eof(c);
 	}
+	virtual int sync() { return flushBuffer() ? 0 : -1; }
+private:
+	bool flushBuffer()
+	{
+		if(m_handle == INVALID_HANDLE_VALUE) return false;
+		std::ptrdiff_t n = pptr() - pbase();
+		char* p = pbase();
+		while(n > 0) {
+			DWORD written = 0;
+			if(!WriteFile(m_handle, p, (DWORD)n, &written, NULL) || written == 0)
+				return false;
+			p += written; n -= (std::ptrdiff_t)written;
+		}
+		setp(m_buf, m_buf + sizeof(m_buf));
+		return true;
+	}
+	HANDLE m_handle;
+	char m_buf[4096];
 };
 
-#elif WIN32
+// Read-only streambuf over a Windows pipe handle (the child's stdout).
+class PipeReadBuf : public std::streambuf
+{
+public:
+	PipeReadBuf(HANDLE h) : m_handle(h) { setg(m_buf, m_buf, m_buf); }
+protected:
+	virtual int_type underflow()
+	{
+		if(gptr() < egptr())
+			return traits_type::to_int_type(*gptr());
+		if(m_handle == INVALID_HANDLE_VALUE) return traits_type::eof();
+		DWORD n = 0;
+		if(!ReadFile(m_handle, m_buf, sizeof(m_buf), &n, NULL) || n == 0)
+			return traits_type::eof();
+		setg(m_buf, m_buf, m_buf + n);
+		return traits_type::to_int_type(*gptr());
+	}
+private:
+	HANDLE m_handle;
+	char m_buf[4096];
+};
 
-// Install Boost headers for your compiler and #define HAVE_BOOST to compile dedicated server for Win32
-// You don't need to link to any lib to compile it, just headers.
-#ifdef new  // Boost is incompatible with leak detection in MSVC, just disable it for the boost headers
-#undef new
-#include <boost/process.hpp> // This one header pulls turdy shitload of Boost headers
-#define new DEBUG_NEW // Re-enable
-#else
-#include <boost/process.hpp>
-#endif
+// Quote an argument vector into a single command line following the rules
+// CommandLineToArgvW uses to split it again.
+static std::string buildCommandLine(const std::vector<std::string>& params)
+{
+	std::string out;
+	for(size_t i = 0; i < params.size(); ++i) {
+		if(i) out += ' ';
+		const std::string& a = params[i];
+		bool needQuote = a.empty() || a.find_first_of(" \t\"") != std::string::npos;
+		if(!needQuote) { out += a; continue; }
+		out += '"';
+		size_t backslashes = 0;
+		for(size_t j = 0; j < a.size(); ++j) {
+			char c = a[j];
+			if(c == '\\') { ++backslashes; out += c; }
+			else if(c == '"') {
+				out.append(backslashes + 1, '\\'); // escape the run of backslashes and the quote
+				out += '"';
+				backslashes = 0;
+			}
+			else { backslashes = 0; out += c; }
+		}
+		out.append(backslashes, '\\'); // double the backslashes preceding the closing quote
+		out += '"';
+	}
+	return out;
+}
+
+} // namespace
 
 struct ProcessIntern
 {
-	boost::process::child *p;
-	ProcessIntern(): p(NULL) {};
-	std::ostream & in() { assert(p != NULL); return p->get_stdin(); };
-	std::istream & out() { assert(p != NULL); return p->get_stdout(); };
-	void close() { if (p) { p->get_stdin().close(); } }
+	ProcessIntern()
+		: m_stdinWr(INVALID_HANDLE_VALUE), m_stdoutRd(INVALID_HANDLE_VALUE),
+		  m_process(NULL), m_inBuf(NULL), m_outBuf(NULL), m_in(NULL), m_out(NULL) {}
+	~ProcessIntern() { reset(); }
+
+	std::ostream& in() { assert(m_in != NULL); return *m_in; }
+	std::istream& out() { assert(m_out != NULL); return *m_out; }
+
+	// Closing the write end signals EOF to the child's stdin.
+	void close()
+	{
+		if(m_in) m_in->flush();
+		if(m_stdinWr != INVALID_HANDLE_VALUE) {
+			CloseHandle(m_stdinWr);
+			m_stdinWr = INVALID_HANDLE_VALUE;
+		}
+	}
+
 	bool open( const std::string & cmd, std::vector< std::string > params, const std::string& working_dir )
 	{
-		if(p)
-			delete p;
-		
-		for (std::vector<std::string>::iterator it = params.begin(); it != params.end(); it++)
+		reset();
+
+		for(std::vector<std::string>::iterator it = params.begin(); it != params.end(); ++it)
 			*it = Utf8ToSystemNative(*it);
-		
-		boost::process::context ctx;
-		ctx.m_stdin_behavior = boost::process::capture_stream(); // Pipe for win32
-		ctx.m_stdout_behavior = boost::process::capture_stream();
-		ctx.m_stderr_behavior = boost::process::close_stream(); // we don't grap the stderr, it is not outputted anywhere, sadly
-		ctx.m_work_directory = Utf8ToSystemNative(working_dir);
-		if(ctx.m_work_directory == "")
-			ctx.m_work_directory = Utf8ToSystemNative(".");
-		try
-		{	
-			p = new boost::process::child(boost::process::launch(Utf8ToSystemNative(cmd), params, ctx)); // Throws exception on error
-		}
-		catch( const std::exception & e )
-		{
-			errors << "Error running command " << cmd << " : " << e.what() << endl;
+
+		SECURITY_ATTRIBUTES sa;
+		sa.nLength = sizeof(sa);
+		sa.bInheritHandle = TRUE;
+		sa.lpSecurityDescriptor = NULL;
+
+		HANDLE stdinRd = INVALID_HANDLE_VALUE, stdinWr = INVALID_HANDLE_VALUE;
+		HANDLE stdoutRd = INVALID_HANDLE_VALUE, stdoutWr = INVALID_HANDLE_VALUE;
+
+		if(!CreatePipe(&stdinRd, &stdinWr, &sa, 0)) {
+			errors << "Process: failed to create stdin pipe" << endl;
 			return false;
 		}
+		if(!CreatePipe(&stdoutRd, &stdoutWr, &sa, 0)) {
+			errors << "Process: failed to create stdout pipe" << endl;
+			CloseHandle(stdinRd); CloseHandle(stdinWr);
+			return false;
+		}
+
+		// The parent-side ends must not leak into the child.
+		SetHandleInformation(stdinWr, HANDLE_FLAG_INHERIT, 0);
+		SetHandleInformation(stdoutRd, HANDLE_FLAG_INHERIT, 0);
+
+		STARTUPINFOA si;
+		ZeroMemory(&si, sizeof(si));
+		si.cb = sizeof(si);
+		si.dwFlags = STARTF_USESTDHANDLES;
+		si.hStdInput = stdinRd;
+		si.hStdOutput = stdoutWr;
+		si.hStdError = GetStdHandle(STD_ERROR_HANDLE); // forward the child's stderr to ours
+
+		PROCESS_INFORMATION pi;
+		ZeroMemory(&pi, sizeof(pi));
+
+		std::string cmdline = buildCommandLine(params);
+		std::vector<char> cmdlineBuf(cmdline.begin(), cmdline.end());
+		cmdlineBuf.push_back('\0'); // CreateProcessA may write into this buffer
+
+		std::string wd = Utf8ToSystemNative(working_dir);
+		const char* wdp = wd.empty() ? NULL : wd.c_str();
+
+		BOOL ok = CreateProcessA(
+			NULL,             // module name is taken from the command line (allows PATH lookup)
+			&cmdlineBuf[0],
+			NULL, NULL,
+			TRUE,             // inherit handles
+			0,
+			NULL,             // inherit environment
+			wdp,
+			&si, &pi);
+
+		// The child holds its own copies now; drop ours whether or not it launched.
+		CloseHandle(stdinRd);
+		CloseHandle(stdoutWr);
+
+		if(!ok) {
+			errors << "Error running command " << cmd << " : CreateProcess failed (" << (int)GetLastError() << ")" << endl;
+			CloseHandle(stdinWr);
+			CloseHandle(stdoutRd);
+			return false;
+		}
+
+		CloseHandle(pi.hThread);
+		m_process = pi.hProcess;
+		m_stdinWr = stdinWr;
+		m_stdoutRd = stdoutRd;
+
+		m_inBuf = new PipeWriteBuf(m_stdinWr);
+		m_outBuf = new PipeReadBuf(m_stdoutRd);
+		m_in = new std::ostream(m_inBuf);
+		m_out = new std::istream(m_outBuf);
 		return true;
 	}
-	~ProcessIntern(){ close(); if(p) delete p; };
+
+private:
+	void reset()
+	{
+		close();
+		if(m_stdoutRd != INVALID_HANDLE_VALUE) { CloseHandle(m_stdoutRd); m_stdoutRd = INVALID_HANDLE_VALUE; }
+		if(m_process) { CloseHandle(m_process); m_process = NULL; }
+		delete m_in; m_in = NULL;
+		delete m_out; m_out = NULL;
+		delete m_inBuf; m_inBuf = NULL;
+		delete m_outBuf; m_outBuf = NULL;
+	}
+
+	HANDLE m_stdinWr;   // parent writes -> child stdin
+	HANDLE m_stdoutRd;  // parent reads  <- child stdout
+	HANDLE m_process;
+	PipeWriteBuf* m_inBuf;
+	PipeReadBuf* m_outBuf;
+	std::ostream* m_in;
+	std::istream* m_out;
 };
 
 #else

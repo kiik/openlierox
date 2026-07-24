@@ -17,12 +17,12 @@
 #else
 #include <AL/al.h>
 #endif
-#include <AL/alut.h>
 #include <stdio.h>
+#include <string.h>
 #include <vector>
 #include <string>
 #include <iostream>
-#include <boost/algorithm/string.hpp>
+#include "StringUtils.h"
 
 
 using namespace std;
@@ -111,7 +111,83 @@ static bool LoadOGG(const char *fileName, vector<char> &buffer, ALenum &format, 
 // end of LoadOGG
 
 
-ALuint  LoadSoundFromFile( const char* inSoundFile ) 
+// Loads a PCM .wav (RIFF) file into a memory buffer and returns the OpenAL
+// format and frequency. This replaces freealut's alutCreateBufferFromFile for
+// the non-ogg samples shipped with the game, which are all PCM WAV. Multi-byte
+// header fields are assembled from little-endian bytes (the WAV byte order), so
+// the parser itself is host-endian independent; the 16-bit sample payload is
+// passed through unchanged, which is correct on the little-endian targets OLX
+// runs on.
+static bool LoadWAV(const char *fileName, vector<char> &buffer, ALenum &format, ALsizei &freq) {
+	FILE *f = OpenGameFile(fileName, "rb");
+	if(f == NULL)
+		return false;
+
+	struct FileCloser {
+		FILE* f;
+		FileCloser(FILE* file) : f(file) {}
+		~FileCloser() { if(f) fclose(f); }
+	} closer(f);
+
+	unsigned char riff[12];
+	if(fread(riff, 1, 12, f) != 12)
+		return false;
+	if(memcmp(riff, "RIFF", 4) != 0 || memcmp(riff + 8, "WAVE", 4) != 0)
+		return false;
+
+	int channels = 0, bits = 0;
+	long sampleRate = 0;
+	bool haveFmt = false, haveData = false;
+
+	while(true) {
+		unsigned char hdr[8];
+		if(fread(hdr, 1, 8, f) != 8)
+			break; // no more chunks
+		unsigned long chunkSize =
+			(unsigned long)hdr[4] | ((unsigned long)hdr[5] << 8) |
+			((unsigned long)hdr[6] << 16) | ((unsigned long)hdr[7] << 24);
+
+		if(memcmp(hdr, "fmt ", 4) == 0) {
+			unsigned char fmt[16];
+			if(chunkSize < 16 || fread(fmt, 1, 16, f) != 16)
+				return false;
+			int audioFormat = fmt[0] | (fmt[1] << 8);
+			channels        = fmt[2] | (fmt[3] << 8);
+			sampleRate      = (long)((unsigned long)fmt[4] | ((unsigned long)fmt[5] << 8) |
+			                         ((unsigned long)fmt[6] << 16) | ((unsigned long)fmt[7] << 24));
+			bits            = fmt[14] | (fmt[15] << 8);
+			if(audioFormat != 1) // only uncompressed PCM is supported
+				return false;
+			if(chunkSize > 16) // skip any extra format bytes
+				fseek(f, (long)(chunkSize - 16), SEEK_CUR);
+			haveFmt = true;
+		}
+		else if(memcmp(hdr, "data", 4) == 0) {
+			buffer.resize(chunkSize);
+			if(chunkSize > 0 && fread(&buffer[0], 1, chunkSize, f) != chunkSize)
+				return false;
+			haveData = true;
+			break; // ignore anything after the data chunk
+		}
+		else {
+			// skip unknown chunk, respecting word-alignment padding
+			fseek(f, (long)(chunkSize + (chunkSize & 1)), SEEK_CUR);
+		}
+	}
+
+	if(!haveFmt || !haveData || channels < 1)
+		return false;
+
+	if(channels == 1)
+		format = (bits == 8) ? AL_FORMAT_MONO8 : AL_FORMAT_MONO16;
+	else
+		format = (bits == 8) ? AL_FORMAT_STEREO8 : AL_FORMAT_STEREO16;
+	freq = (ALsizei)sampleRate;
+	return true;
+}
+
+
+ALuint  LoadSoundFromFile( const char* inSoundFile )
 {
     ALuint bufferID;                        // The OpenAL sound buffer ID
     ALenum format;                          // The sound data format
@@ -169,7 +245,7 @@ SoundSampleOpenAL::SoundSampleOpenAL(std::string const& filename)
 
     ALuint bufferID = 0;           // The OpenAL sound buffer ID
 	
-	if (boost::iends_with(filename, ".ogg"))
+	if (filename.size() >= 4 && stringcaseequal(filename.substr(filename.size() - 4), ".ogg"))
 	{
 		bufferID=LoadSoundFromFile( filename.c_str());
 		if (bufferID==0)
@@ -177,12 +253,19 @@ SoundSampleOpenAL::SoundSampleOpenAL(std::string const& filename)
 	}
 	else
 	{
-		bufferID=alutCreateBufferFromFile (Utf8ToSystemNative(GetFullFileName(filename)).c_str());
-		if (bufferID==AL_NONE)
+		vector<char> wavData;
+		ALenum wavFormat = AL_FORMAT_MONO16;
+		ALsizei wavFreq = 0;
+		if (!LoadWAV(filename.c_str(), wavData, wavFormat, wavFreq))
 		{
-			notes << "SoundSampleOpenAL: cannot load " << filename << ": " << alutGetErrorString(alutGetError()) << endl;
+			notes << "SoundSampleOpenAL: cannot load " << filename << ": unsupported or invalid audio file" << endl;
 			return;
 		}
+		alGenBuffers(1, &bufferID);
+		alBufferData(bufferID, wavFormat, wavData.empty() ? NULL : &wavData[0],
+					 static_cast<ALsizei>(wavData.size()), wavFreq);
+		if (bufferID == AL_NONE)
+			return;
 	}
 	
 	buffer = new OpenALBuffer(bufferID, filename);

@@ -35,10 +35,6 @@
 #include "gusanos/allegro.h"
 using std::cerr;
 using std::endl;
-#include <boost/lexical_cast.hpp>
-#include <boost/bind/bind.hpp>
-using boost::lexical_cast;
-using namespace boost::placeholders;
 
 namespace LuaBindings
 {
@@ -223,7 +219,7 @@ int l_console_register_command(lua_State* L)
 	ref.create(context);
 	
 	console.registerCommands()
-			(name, boost::bind(LuaBindings::luaConsoleCommand, context, ref, _1), true);
+			(name, [context, ref](std::list<std::string> const& args){ return LuaBindings::luaConsoleCommand(context, ref, args); }, true);
 
 	return 0;
 }

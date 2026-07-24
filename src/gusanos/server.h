@@ -5,14 +5,14 @@
 
 #include "netstream.h"
 #include <map>
-#include <boost/shared_ptr.hpp>
+#include <memory>
 
 class Server : public Net_Control
 {
 private:
 	// Flag to refuse connection while waiting for all players to aknowledge disconnection
 	bool m_preShutdown;
-	std::map<unsigned int, boost::shared_ptr<CWormInputHandler::Stats> > savedScores;
+	std::map<unsigned int, std::shared_ptr<CWormInputHandler::Stats> > savedScores;
 	
 public:
 	Server();

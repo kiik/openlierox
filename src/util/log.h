@@ -8,7 +8,6 @@
 #include <cstring>
 #include <map>
 #include "macros.h"
-#include <boost/preprocessor/cat.hpp>
 #include "CodeAttributes.h"
 
 struct Location

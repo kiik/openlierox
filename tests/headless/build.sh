@@ -28,7 +28,7 @@ case "$(uname)" in
         echo ">>> Installing Homebrew build dependencies (idempotent) ..."
         brew install \
             ninja pkg-config sdl2 sdl2_image sdl2_mixer libzip gd \
-            libvorbis freealut openal-soft boost yaml-cpp
+            libvorbis openal-soft yaml-cpp
         require_cmake3
         # libxml2 and openal-soft are keg-only; expose their .pc files.
         PKG_CONFIG_PATH="$(brew --prefix libxml2)/lib/pkgconfig:$(brew --prefix openal-soft)/lib/pkgconfig:${PKG_CONFIG_PATH:-}"

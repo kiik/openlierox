@@ -2,7 +2,6 @@
 #define VERMES_OBJECT_GRID_H
 
 #include <vector>
-#include <boost/utility.hpp>
 #include "game/CGameObject.h"
 
 #include <iostream>
@@ -320,8 +319,10 @@ struct GridObjectList
 	size_t      count;
 };
 
-class Grid : boost::noncopyable
+class Grid
 {
+	Grid(const Grid&) = delete;            // non-copyable (was boost::noncopyable)
+	Grid& operator=(const Grid&) = delete;
 public:
 	static const int shift = 5;
 	static const int squareSide = (1 << shift);

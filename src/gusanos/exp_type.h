@@ -11,7 +11,7 @@
 #include "gusanos/allegro.h"
 #include <string>
 #include <vector>
-#include <boost/cstdint.hpp>
+#include <stdint.h>
 
 class SpriteSet;
 class Distortion;
