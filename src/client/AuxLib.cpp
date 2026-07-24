@@ -284,6 +284,16 @@ void CapFPS() {
 	// because it's polled directly during simulation.
 	return;
 #else
+	// With vsync on, SDL_RenderPresent already blocks to the display refresh and
+	// the game thread is throttled through the frame queue (pushFrame waits for
+	// the present to consume each frame). Sleeping here on top of that only adds
+	// input latency and can cap us below the refresh rate, so let vsync pace us.
+	// Key off the granted state, not the option: if vsync was requested but the
+	// driver ignored it, present doesn't block and we must still cap here, or the
+	// game thread busy-loops at 100% CPU.
+	if(VideoPostProcessor::vsyncActive())
+		return;
+
 	const TimeDiff fMaxFrameTime = TimeDiff( (tLXOptions->nMaxFPS > 0) ? (1.0f / (float)tLXOptions->nMaxFPS) : 0.0f );
 	const AbsTime currentTime = GetTime();
 	// tLX->currentTime is old time
@@ -590,7 +600,11 @@ bool VideoPostProcessor::resetVideo() {
 	m_renderer = SDL_CreateRenderer(m_window.get(), -1,
 	                                SDL_RENDERER_SOFTWARE);
 #else
-	m_renderer = SDL_CreateRenderer(m_window.get(), -1, 0);
+	// Present at the display refresh when the user wants it: this removes
+	// tearing and gives even frame pacing. CapFPS() then stops sleeping so the
+	// vsync-blocked present is what paces the game thread (see CapFPS).
+	Uint32 rendererFlags = tLXOptions->bVSync ? SDL_RENDERER_PRESENTVSYNC : 0;
+	m_renderer = SDL_CreateRenderer(m_window.get(), -1, rendererFlags);
 #endif
 	if(!m_renderer.get()) {
 		errors << "failed to init renderer: " << SDL_GetError() << endl;
@@ -598,7 +612,15 @@ bool VideoPostProcessor::resetVideo() {
 	}
 	
 	dumpRenderInfo(m_renderer.get());
-	
+
+	// Record whether vsync was actually granted (the driver may have ignored the
+	// request, or a software fallback never supports it). CapFPS() relies on this.
+	{
+		SDL_RendererInfo info;
+		m_vsyncActive = (SDL_GetRendererInfo(m_renderer.get(), &info) == 0)
+			&& (info.flags & SDL_RENDERER_PRESENTVSYNC);
+	}
+
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");  // make the scaled rendering look smoother.
 	SDL_RenderSetLogicalSize(m_renderer.get(), screenWidth(), screenHeight());
 	
@@ -622,6 +644,39 @@ bool VideoPostProcessor::resetVideo() {
 	}
 	DumpSurfaceInfo(m_videoSurface.get(), "main video surface");
 
+	// Sharp-bilinear: decide before creating the band texture, because a
+	// texture's scale mode is baked in at creation via the scale-quality hint.
+	// Prescale the band by an integer factor with NEAREST (crisp pixels), then
+	// resample that intermediate to the window with LINEAR (smooth) -- far
+	// sharper than stretching the 480p band to the display linearly in one go.
+	m_sharpTarget = NULL;
+	m_sharpFactor = 1;
+#if !defined(__EMSCRIPTEN__)
+	if(tLXOptions->bSharpScaling) {
+		SDL_RendererInfo info;
+		int outW = 0, outH = 0;
+		SDL_GetRendererOutputSize(m_renderer.get(), &outW, &outH);
+		if(SDL_GetRendererInfo(m_renderer.get(), &info) == 0
+		   && (info.flags & SDL_RENDERER_TARGETTEXTURE)
+		   && outH > screenHeight()) {
+			// Smallest integer scale whose result reaches the output height, so
+			// the final linear step is a mild downscale (the sharpest result).
+			int factor = (outH + screenHeight() - 1) / screenHeight();
+			// Keep the intermediate within the driver's texture limits.
+			int maxW = info.max_texture_width  > 0 ? info.max_texture_width  : 8192;
+			int maxH = info.max_texture_height > 0 ? info.max_texture_height : 8192;
+			while(factor > 1 &&
+			      (screenWidth() * factor > maxW || screenHeight() * factor > maxH))
+				factor--;
+			if(factor > 1)
+				m_sharpFactor = factor;
+		}
+	}
+#endif
+
+	// The band texture: NEAREST when we prescale it (crisp), else LINEAR (smooth)
+	// because then it is stretched straight to the window.
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, m_sharpFactor > 1 ? "nearest" : "best");
 	// Must be of same format as videoSurface, because we copy the pixels over.
 	m_videoTexture = SDL_CreateTexture
 	(
@@ -630,11 +685,45 @@ bool VideoPostProcessor::resetVideo() {
 		SDL_TEXTUREACCESS_STREAMING,
 		screenWidth(), screenHeight()
 	);
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");  // everything else stays smooth
 	if(!m_videoTexture.get()) {
 		errors << "failed to init video texture: " << SDL_GetError() << endl;
 		return false;
 	}
-	
+
+	// The intermediate target (sampled LINEAR, hint restored just above).
+	if(m_sharpFactor > 1) {
+		m_sharpTarget = SDL_CreateTexture
+		(
+			m_renderer.get(),
+			m_videoSurface->format->format,
+			SDL_TEXTUREACCESS_TARGET,
+			screenWidth() * m_sharpFactor, screenHeight() * m_sharpFactor
+		);
+		if(!m_sharpTarget.get()) {
+			warnings << "sharp-scaling target alloc failed (" << SDL_GetError()
+				<< "); falling back to direct scaling" << endl;
+			m_sharpFactor = 1;
+			// The band texture is NEAREST now, which looks blocky stretched
+			// straight to the window; recreate it LINEAR for the direct path.
+			m_videoTexture = SDL_CreateTexture
+			(
+				m_renderer.get(),
+				m_videoSurface->format->format,
+				SDL_TEXTUREACCESS_STREAMING,
+				screenWidth(), screenHeight()
+			);
+			if(!m_videoTexture.get()) {
+				errors << "failed to init video texture: " << SDL_GetError() << endl;
+				return false;
+			}
+		} else {
+			notes << "sharp scaling: prescale factor " << m_sharpFactor << " ("
+				<< (screenWidth()*m_sharpFactor) << "x" << (screenHeight()*m_sharpFactor)
+				<< " intermediate)" << endl;
+		}
+	}
+
 	// No need to reinit this.
 	if(!m_videoBufferSurface.get()) {
 		// Should be same format as videoSurface.
@@ -784,13 +873,28 @@ void VideoPostProcessor::render() {
 	SDL_Renderer* r = get()->m_renderer.get();
 	SDL_Texture* band = get()->m_videoTexture.get();
 
+	const int w = get()->screenWidth();
+	const int h = get()->screenHeight();
+
+	// Sharp-bilinear stage 1: nearest-scale the 480p band into the integer-sized
+	// intermediate (crisp pixels). Stage 2 below then presents this intermediate,
+	// which is sampled LINEAR, so the final fit to the window is smooth.
+	// Logical size is disabled for this pass so we draw in the target's own pixels.
+	const int S = get()->m_sharpTarget.get() ? get()->m_sharpFactor : 1;
+	if(S > 1) {
+		SDL_SetRenderTarget(r, get()->m_sharpTarget.get());
+		SDL_RenderSetLogicalSize(r, 0, 0);
+		SDL_RenderCopy(r, band, NULL, NULL);
+		SDL_SetRenderTarget(r, NULL);
+		SDL_RenderSetLogicalSize(r, w, h);
+		band = get()->m_sharpTarget.get();
+	}
+
 	// Clear to black; the overlay leaves the draw color set, so pin it each frame.
 	SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
 	SDL_RenderClear(r);
 
 	// Assemble the frame on the GPU: side gaps, then the (centered) band, then the cursor.
-	const int w = get()->screenWidth();
-	const int h = get()->screenHeight();
 	int dw = get()->m_renderDisplayScreenWidth;
 	if(dw <= 0 || dw > w) dw = w;
 	int offset = (w - dw) / 2;
@@ -811,7 +915,8 @@ void VideoPostProcessor::render() {
 		}
 		// The band is dw wide in the left columns; present it centered.
 		// The mouse is shifted by the same offset (HandleMouseState), so clicks line up.
-		SDL_Rect bandSrc = { 0, 0, dw, h };
+		// When prescaled, the source lives in the S-times-larger intermediate.
+		SDL_Rect bandSrc = { 0, 0, dw * S, h * S };
 		SDL_Rect bandDst = { offset, 0, dw, h };
 		SDL_RenderCopy(r, band, &bandSrc, &bandDst);
 
@@ -865,6 +970,8 @@ void VideoPostProcessor::uninit() {
 
 	// GPU textures below belong to m_renderer; drop them all before it dies.
 	instance.m_videoTexture = NULL;
+	instance.m_sharpTarget = NULL;
+	instance.m_sharpFactor = 1;
 	instance.m_leftGapTex = NULL;
 	instance.m_rightGapTex = NULL;
 	InvalidateCursorTextures();

@@ -224,6 +224,14 @@ public:
 	bool	bFullscreen;
 	bool	bShowFPS;
 	bool	bOpenGL;
+	// Present at the display refresh rate (SDL_RENDERER_PRESENTVSYNC).
+	// Removes tearing and evens out frame pacing; when on, CapFPS stops
+	// sleeping and lets the vsync-blocked present pace the game thread.
+	bool	bVSync;
+	// Sharp-bilinear upscaling: integer-prescale the 480p band with nearest
+	// (crisp pixel edges), then let the final pass resample it smoothly to the
+	// window, instead of blurring the low-res band with a straight linear scale.
+	bool	bSharpScaling;
 	std::string	sResolution;
 	int		iColourDepth;
 

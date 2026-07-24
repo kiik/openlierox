@@ -89,6 +89,17 @@ protected:
 	SmartPointer<SDL_Surface> m_videoBufferSurface;   // committed frame (back)
 	SmartPointer<SDL_Surface> m_leftGap, m_rightGap;  // precomputed side-gap fills (buildSideGaps)
 	SmartPointer<SDL_Texture> m_leftGapTex, m_rightGapTex; // the gaps as GPU textures
+	// Sharp-bilinear intermediate: the band nearest-scaled by m_sharpFactor,
+	// then linearly resampled to the window. Null (and factor 1) when disabled,
+	// unsupported, or unneeded (window not bigger than the 480p band).
+	SmartPointer<SDL_Texture> m_sharpTarget;
+	int m_sharpFactor = 1;
+	// Whether the renderer actually granted vsync (SDL_RENDERER_PRESENTVSYNC in
+	// its info flags), not merely whether we asked for it: a driver or software
+	// fallback can silently ignore the request. CapFPS() must key its no-sleep
+	// path off this real state, or it would busy-loop uncapped when vsync was
+	// requested but not honored.
+	bool m_vsyncActive = false;
 	Uint32 m_sideGapKey = 0;    // change key: rebuild the gap surfaces only when it changes
 	Uint32 m_sideGapTexKey = 0; // last key uploaded to the gap textures
 	int m_screenWidth = 640;
@@ -138,6 +149,9 @@ private:
 	static ScreenOverlayFn screenOverlay;
 public:
 	
+	// Whether the renderer is actually presenting at vsync (see m_vsyncActive).
+	static bool vsyncActive() { return get()->m_vsyncActive; }
+
 	int screenWidth() const { return m_screenWidth; }
 	int screenHeight() const { return 480; }
 

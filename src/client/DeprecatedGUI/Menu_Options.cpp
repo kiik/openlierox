@@ -133,6 +133,8 @@ enum {
 	os_HttpProxy,
 	os_ShowFPS,
 	os_OpenGL,
+	os_VSync,
+	os_SharpScaling,
 	os_ShowPing,
 	os_LogConvos,
 	os_ScreenshotFormat,
@@ -471,6 +473,12 @@ bool Menu_OptionsInitialize()
 	cOpt_System.Add( new CCheckbox(tLXOptions->bOpenGL),    os_OpenGL, 590, y, 17,17);
 
 	y += 20;
+	cOpt_System.Add( new CLabel("VSync",tLX->clNormalLabel),            Static, 60, y, 0,0);
+	cOpt_System.Add( new CCheckbox(tLXOptions->bVSync),     os_VSync, 140, y, 17,17);
+	cOpt_System.Add( new CLabel("Sharp Scaling",tLX->clNormalLabel),    Static, 440, y, 0,0);
+	cOpt_System.Add( new CCheckbox(tLXOptions->bSharpScaling), os_SharpScaling, 590, y, 17,17);
+
+	y += 20;
 	cOpt_System.Add( new CLabel("Audio",tLX->clHeading),              Static, 40, y, 0,0);
 	cOpt_System.Add( new CLine(0,0,0,0, lineCol), Static, 90, y + 8, 620 - 90, 0);
 	y += 20;
@@ -524,8 +532,8 @@ bool Menu_OptionsInitialize()
 	cOpt_System.Add( new CButton(BUT_APPLY, tMenu->bmpButtons), os_Apply, 555,440, 60,15);
 
 	// Put the combo box after the other widgets to get around the problem with widget layering
-	cOpt_System.Add( new CCombobox(), os_NetworkSpeed, 170, starty + 155 - 3, 130,17);
-	cOpt_System.Add( new CCombobox(), os_ScreenshotFormat, 365, starty + 225, 70,17);
+	cOpt_System.Add( new CCombobox(), os_NetworkSpeed, 170, starty + 175 - 3, 130,17);
+	cOpt_System.Add( new CCombobox(), os_ScreenshotFormat, 365, starty + 245, 70,17);
 	cOpt_System.Add( new CCombobox(), os_ColourDepth, 275, starty + 20, 145, 17);
 
 	// Set the values
@@ -1196,6 +1204,10 @@ void Menu_OptionsFrame()
 		// OpenGL accel value
 		c2 = (CCheckbox *)cOpt_System.getWidget(os_OpenGL);
 		bool opengl = c2->getValue () != 0;
+		// VSync and sharp-scaling values (both applied by a video-mode reset,
+		// no full restart needed, like fullscreen)
+		bool vsync = ((CCheckbox *)cOpt_System.getWidget(os_VSync))->getValue() != 0;
+		bool sharpScaling = ((CCheckbox *)cOpt_System.getWidget(os_SharpScaling))->getValue() != 0;
 		// Color depth
 		int cdepth = ((CCombobox *)cOpt_System.getWidget(os_ColourDepth))->getSelectedIndex();
 		switch (cdepth)  {
@@ -1229,6 +1241,8 @@ void Menu_OptionsFrame()
 						tLXOptions->bFullscreen = fullscr;
 						tLXOptions->bOpenGL = opengl;
 						tLXOptions->iColourDepth = cdepth;
+						tLXOptions->bVSync = vsync;
+						tLXOptions->bSharpScaling = sharpScaling;
 						bool fail = false;
 
 						CTextbox *t = (CTextbox *)cOpt_System.getWidget(os_MaxFPS);
@@ -1361,7 +1375,7 @@ void Menu_OptionsFrame()
 		// FPS and fullscreen
 		t = (CTextbox *)cOpt_System.getWidget(os_MaxFPS);
 
-		if(cdepth != tLXOptions->iColourDepth || opengl != tLXOptions->bOpenGL || fullscr != tLXOptions->bFullscreen || atoi(t->getText()) != tLXOptions->nMaxFPS) {
+		if(cdepth != tLXOptions->iColourDepth || opengl != tLXOptions->bOpenGL || fullscr != tLXOptions->bFullscreen || vsync != tLXOptions->bVSync || sharpScaling != tLXOptions->bSharpScaling || atoi(t->getText()) != tLXOptions->nMaxFPS) {
 			cOpt_System.getWidget(os_Apply)->setEnabled(true);
 			cOpt_System.getWidget(os_Apply)->Draw( VideoPostProcessor::videoSurface().get() );
         } else {

@@ -175,6 +175,8 @@ bool GameOptions::Init() {
 #else
 			false )
 #endif
+		( tLXOptions->bVSync, "Video.VSync", true )
+		( tLXOptions->bSharpScaling, "Video.SharpScaling", true )
 		( tLXOptions->iColourDepth, "Video.ColourDepth", 32 )
 		( tLXOptions->sResolution, "Video.Resolution", "" )
 
