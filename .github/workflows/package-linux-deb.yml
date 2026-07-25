@@ -1,11 +1,10 @@
 name: Build Linux deb
 
 on:
-  # PRs build only Linux and WASM to keep CI light. This platform builds on
-  # develop pushes and on demand via workflow_dispatch, so a dev can run it on
-  # a branch when they need the artifact.
-  push:
-    branches: [develop]
+  # The .deb is not built by default -- not on PRs, and (unlike the other
+  # platforms) not on develop pushes either. Run it on demand via
+  # workflow_dispatch when a .deb is needed; it still builds for master
+  # releases via workflow_call.
   workflow_dispatch:
   # Reusable: invoked by release-beta.yml on merges to master.
   workflow_call:
