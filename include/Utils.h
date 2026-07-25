@@ -16,7 +16,7 @@
 #include <list>
 #include <cassert>
 #include <set>
-#include <boost/function.hpp>
+#include <functional>
 #include "util/Random.h"
 
 template <typename _dst, typename _src>
@@ -60,7 +60,7 @@ template<typename T> std::set<T> Set(T v1, T v2) { std::set<T> ret; ret.insert(v
 template<typename T> std::set<T> Set(T v1, T v2, T v3) { std::set<T> ret; ret.insert(v1); ret.insert(v2); ret.insert(v3); return ret; }
 
 template<typename RetT, typename ArgT>
-RetT ifTrue(ArgT v, boost::function<RetT (ArgT)> f, RetT fallback = RetT()) {
+RetT ifTrue(ArgT v, std::function<RetT (ArgT)> f, RetT fallback = RetT()) {
 	if(v) return f(v);
 	return fallback;
 }

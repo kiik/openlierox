@@ -14,8 +14,6 @@
 // Jason Boettcher
 
 #include <vector>
-#include <boost/lambda/lambda.hpp>
-#include <boost/bind/bind.hpp>
 
 #include "LieroX.h"
 #include "CServer.h"
@@ -40,8 +38,6 @@
 #include "CGameScript.h"
 #include "Utils.h"
 #include "game/GameState.h"
-
-using namespace boost::placeholders;
 
 // declare them only locally here as nobody really should use them explicitly
 std::string OldLxCompatibleString(const std::string &Utf8String);
@@ -163,7 +159,7 @@ void CServerNetEngine::SendHideWorm(CWorm *worm, int forworm, bool show, bool im
 {
 	// For old clients we move the worm out of the map and kill it
 
-	if(!any(game.wormsOfClient(cl))(boost::bind(&CWorm::getID, _1) == forworm))
+	if(!any(game.wormsOfClient(cl))([forworm](CWorm* w){ return w->getID() == forworm; }))
 		// ignore it
 		return;
 	

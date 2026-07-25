@@ -183,9 +183,9 @@ SmartPointer<ThreadPoolItem> ThreadPool::start(ThreadFunc fct, void* param, cons
 	return start(act, name);
 }
 
-SmartPointer<ThreadPoolItem> ThreadPool::start(boost::function<Result()> fct, const std::string& name) {
+SmartPointer<ThreadPoolItem> ThreadPool::start(std::function<Result()> fct, const std::string& name) {
 	struct FctPtrAction : Action {
-		boost::function<Result()> fct;
+		std::function<Result()> fct;
 		Result handle() { return fct(); }
 	};
 	FctPtrAction* act = new FctPtrAction();

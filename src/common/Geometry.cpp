@@ -148,7 +148,7 @@ float Line::distFromPoint(const VectorD2<int> &pt) const
 	return sqrtf(distFromPoint2(pt));
 }
 
-void Line::forEachPoint(boost::function<void (int, int)> f) {
+void Line::forEachPoint(std::function<void (int, int)> f) {
 	const int x1 = start.x;
 	const int y1 = start.y;
 	const int x2 = end.x;

@@ -9,7 +9,7 @@
 #include "util/stringbuild.h"
 #include "util/text.h"
 #include "gusanos/allegro.h"
-#include <boost/crc.hpp>
+#include "util/CRC32.h"
 using std::unique_ptr;
 using std::cout;
 using std::endl;
@@ -141,7 +141,7 @@ struct Parameters
 		}
 	}
 	
-	void calcCRC(boost::crc_32_type& crc)
+	void calcCRC(CRC32& crc)
 	{
 		foreach(i, params)
 		{
@@ -255,7 +255,7 @@ struct List : public TokenBase
 	virtual Type::type type()
 	{ return Type::List; }
 	
-	virtual void calcCRC(boost::crc_32_type& crc)
+	virtual void calcCRC(CRC32& crc)
 	{
 		crc(0xE);
 		foreach(i, elements)
@@ -294,7 +294,7 @@ TokenBase* Function::operator[](size_t i) const
 	return params[i];
 }
 
-void Function::calcCRC(boost::crc_32_type& crc)
+void Function::calcCRC(CRC32& crc)
 {
 	crc.process_bytes(name.data(), name.size());
 	foreach(i, params)
@@ -373,7 +373,7 @@ struct Add : public BinOp
 		return static_cast<int>(a->toDouble() + b->toDouble());
 	}
 	
-	virtual void calcCRC(boost::crc_32_type& crc)
+	virtual void calcCRC(CRC32& crc)
 	{
 		crc.process_byte(0xA);
 		a->calcCRC(crc);
@@ -400,7 +400,7 @@ struct Sub : public BinOp
 		return static_cast<int>(a->toDouble() - b->toDouble());
 	}
 	
-	virtual void calcCRC(boost::crc_32_type& crc)
+	virtual void calcCRC(CRC32& crc)
 	{
 		crc.process_byte(0xB);
 		a->calcCRC(crc);
@@ -427,7 +427,7 @@ struct Mul : public BinOp
 		return static_cast<int>(a->toDouble() * b->toDouble());
 	}
 	
-	virtual void calcCRC(boost::crc_32_type& crc)
+	virtual void calcCRC(CRC32& crc)
 	{
 		crc.process_byte(0xC);
 		a->calcCRC(crc);
@@ -454,7 +454,7 @@ struct Div : public BinOp
 		return static_cast<int>(a->toDouble() / b->toDouble());
 	}
 	
-	virtual void calcCRC(boost::crc_32_type& crc)
+	virtual void calcCRC(CRC32& crc)
 	{
 		crc.process_byte(0xD);
 		a->calcCRC(crc);
@@ -520,7 +520,7 @@ struct ParserImpl : public TGrammar<ParserImpl>
 {
 	struct GameEvent
 	{
-		GameEvent(GameEventDef* def_, Parameters* params_, std::vector< boost::shared_ptr<BaseAction> >& actions_)
+		GameEvent(GameEventDef* def_, Parameters* params_, std::vector< std::shared_ptr<BaseAction> >& actions_)
 		: def(def_), params(params_)
 		{
 			actions.swap(actions_);
@@ -534,7 +534,7 @@ struct ParserImpl : public TGrammar<ParserImpl>
 		//std::string name;
 		GameEventDef* def;
 		Parameters* params;
-		std::vector< boost::shared_ptr<BaseAction> > actions;
+		std::vector< std::shared_ptr<BaseAction> > actions;
 	};
 	
 	struct Property
@@ -679,7 +679,7 @@ struct ParserImpl : public TGrammar<ParserImpl>
 		return action->create(params->params);
 	}
 	
-	void addEvent(GameEventDef* event, std::unique_ptr<Parameters> params, std::vector< boost::shared_ptr<BaseAction> >& actions)
+	void addEvent(GameEventDef* event, std::unique_ptr<Parameters> params, std::vector< std::shared_ptr<BaseAction> >& actions)
 	{
 		params->calcCRC(crc);
 		events.push_back(new GameEvent(event, params.release(), actions));
@@ -689,7 +689,7 @@ struct ParserImpl : public TGrammar<ParserImpl>
 	std::string fileName;
 	std::map<std::string, Property*> properties;
 	std::list<GameEvent*> events;
-	boost::crc_32_type crc;
+	CRC32 crc;
 	
 	//
 	std::map<std::string, GameEventDef*> eventDef;
@@ -737,7 +737,7 @@ std::vector<TokenBase*> const& Parser::GameEventIter::params()
 	return (*self->i)->params->params;
 }
 
-std::vector< boost::shared_ptr<BaseAction> >& Parser::GameEventIter::actions()
+std::vector< std::shared_ptr<BaseAction> >& Parser::GameEventIter::actions()
 {
 	return (*self->i)->actions;
 }
@@ -862,7 +862,7 @@ void Parser::error(std::string const& msg)
 	pimpl->semanticError(msg);
 }
 
-boost::crc_32_type::value_type Parser::getCRC()
+CRC32::value_type Parser::getCRC()
 {
 	return pimpl->crc.checksum();
 }

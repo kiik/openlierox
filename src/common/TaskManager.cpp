@@ -123,7 +123,7 @@ void TaskManager::start(Task* t, QueueType queue) {
 						task->handle();
 			{
 				SDL_mutexP(task->manager->mutex);
-				boost::shared_ptr<Mutex> m = task->mutex;
+				std::shared_ptr<Mutex> m = task->mutex;
 				Mutex::ScopedLock lock(*m);
 				
 								if(task->replacingTask) {

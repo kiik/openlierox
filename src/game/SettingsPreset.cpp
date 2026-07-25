@@ -7,7 +7,6 @@
  *
  */
 
-#include <boost/bind/bind.hpp>
 #include "SettingsPreset.h"
 #include "Mod.h"
 #include "CGameScript.h"
@@ -62,12 +61,14 @@ static GuiItemList getCurrentSettingsPresetList() {
 }
 
 GuiList::Pt dynamicPresetListForCurrentMod() {
-	return dynamicGuiList(boost::bind(&getCurrentSettingsPresetList));
+	return dynamicGuiList(&getCurrentSettingsPresetList);
 }
 
 void setupModGameSettingsPresetComboboxes(DeprecatedGUI::CCombobox* modList, DeprecatedGUI::CCombobox* presetList) {
 	presetList->setListBackend( dynamicPresetListForCurrentMod() );
-	modList->OnChangeSelection.connect( boost::bind(&DeprecatedGUI::CCombobox::updateFromListBackend, presetList) );
+	// OnChangeSelection is signal<void(const GuiListItem::Pt&)>; ignore the
+	// selected-item argument (as the former boost::bind slot did).
+	modList->OnChangeSelection.connect( [presetList](const GuiListItem::Pt&){ presetList->updateFromListBackend(); } );
 	presetList->updateFromListBackend(); // also update right now
 }
 

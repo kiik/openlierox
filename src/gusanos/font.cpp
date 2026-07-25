@@ -14,7 +14,7 @@
 
 using namespace std;
 
-boost::array<Font::Color, 16> Font::palette =
+std::array<Font::Color, 16> Font::palette =
 {{
 	Color(255, 255, 255), //0
 	Color(0, 0, 0),       //1

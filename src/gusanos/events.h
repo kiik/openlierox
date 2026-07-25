@@ -5,7 +5,7 @@
 
 #include <string>
 #include <vector>
-#include <boost/shared_ptr.hpp>
+#include <memory>
 
 class Weapon;
 class CWorm;
@@ -15,7 +15,7 @@ class BaseAction;
 struct GameEvent
 {
 public:
-	typedef std::vector< boost::shared_ptr<BaseAction> > Actions;
+	typedef std::vector< std::shared_ptr<BaseAction> > Actions;
 
 	GameEvent();
 	GameEvent(Actions&);

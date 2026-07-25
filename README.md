@@ -65,16 +65,13 @@ Install development dependencies, for Ubuntu and Debian it can be done with:
 sudo apt install \
     libsdl2-dev \
     libsdl2-image-dev \
-    libsdl2-mixer-dev \
     libxml2-dev \
     libgd-dev \
     zlib1g-dev \
     libzip-dev \
     libx11-dev \
     libcurl4-openssl-dev \
-    libboost-dev \
     libopenal-dev \
-    libalut-dev \
     libvorbis-dev \
     libyaml-cpp-dev \
     binutils-dev \

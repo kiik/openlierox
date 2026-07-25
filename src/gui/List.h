@@ -17,7 +17,7 @@
 
 #include <string>
 #include <list>
-#include <boost/function.hpp>
+#include <functional>
 
 #include "Iter.h"
 #include "Ref.h"
@@ -47,7 +47,7 @@ public:
 };
 
 typedef SmartPointer< std::list<GuiListItem::Pt> > GuiItemList;
-GuiList::Pt dynamicGuiList(boost::function< GuiItemList() >);
+GuiList::Pt dynamicGuiList(std::function< GuiItemList() >);
 
 #endif
 

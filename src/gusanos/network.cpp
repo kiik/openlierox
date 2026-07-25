@@ -21,8 +21,6 @@
 #include <set>
 #include <utility>
 #include "netstream.h"
-#include <boost/assign/list_inserter.hpp>
-using namespace boost::assign;
 
 using namespace std;
 

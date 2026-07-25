@@ -20,12 +20,10 @@ extern "C"
 #include <cmath>
 #include <map>
 #include <set>
-#include <boost/bind/bind.hpp>
 
 #define FREELIST_REF 1
 #define ARRAY_SIZE   2
 
-using namespace boost::placeholders;
 
 LuaContext luaIngame;
 LuaContext luaGlobal;
@@ -1006,8 +1004,7 @@ static int luaPrintOnCLI(CmdLineIntf& cli, lua_State* L)
 }
 
 LuaCustomPrintScope::Func printFuncFromCLI(CmdLineIntf& cli) {
-	using namespace boost;
-	return boost::bind(luaPrintOnCLI, ref(cli), _1);
+	return [&cli](lua_State* L){ return luaPrintOnCLI(cli, L); };
 }
 
 void LuaReference::cleanup() {

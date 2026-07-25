@@ -10,8 +10,8 @@
 #include <stdexcept>
 #include <stdint.h>
 #include "util/log.h"
-#include <boost/crc.hpp>
-#include <boost/shared_ptr.hpp>
+#include "util/CRC32.h"
+#include <memory>
 
 class BaseAction;
 
@@ -179,7 +179,7 @@ struct TokenBase
 	virtual Type::type type()
 	{ return Type::Default; }
 	
-	virtual void calcCRC(boost::crc_32_type& crc)
+	virtual void calcCRC(CRC32& crc)
 	{
 		crc.process_byte(0xFF);
 	}
@@ -194,7 +194,7 @@ struct Function : public TokenBase
 	
 	TokenBase* operator[](size_t i) const;
 	
-	virtual void calcCRC(boost::crc_32_type& crc);
+	virtual void calcCRC(CRC32& crc);
 	
 protected:
 	Function(Location loc_, std::string const& name_);
@@ -253,7 +253,7 @@ struct Parser : public Pimpl<ParserImpl>
 		
 		int type();
 		std::vector<TokenBase*> const& params();
-		std::vector< boost::shared_ptr<BaseAction> >& actions();
+		std::vector< std::shared_ptr<BaseAction> >& actions();
 		
 		GameEventIter(Parser&);
 		
@@ -291,7 +291,7 @@ struct Parser : public Pimpl<ParserImpl>
 	
 	TokenBase* getDeprProperty(std::string const& name);
 	
-	boost::crc_32_type::value_type getCRC();
+	CRC32::value_type getCRC();
 	
 	void crcProcessByte(unsigned char byte);
 	

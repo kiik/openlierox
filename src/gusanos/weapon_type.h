@@ -10,7 +10,7 @@
 
 #include <string>
 #include <vector>
-#include <boost/cstdint.hpp>
+#include <stdint.h>
 
 #ifndef DEDICATED_ONLY
 class SpriteSet;

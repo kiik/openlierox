@@ -55,11 +55,7 @@
 #include "DeprecatedGUI/CBrowser.h"
 #include "gusanos/LuaCallbacks.h"
 
-#include <boost/shared_ptr.hpp>
-#include <boost/lambda/lambda.hpp>
-#include <boost/bind/bind.hpp>
-
-using namespace boost::placeholders;
+#include <memory>
 
 Game game;
 
@@ -1289,7 +1285,7 @@ Iterator<CWorm*>::Ref Game::aliveWorms() {
 }
 
 Iterator<CWorm*>::Ref Game::wormsOfClient(const CServerConnection* cl) {
-	return GetFilterIterator(worms())( boost::bind(&CWorm::getClient, _1) == cl );
+	return GetFilterIterator(worms())( [cl](CWorm* w){ return w->getClient() == cl; } );
 }
 
 CWorm* Game::wormById(int wormId, bool assertExisting) {

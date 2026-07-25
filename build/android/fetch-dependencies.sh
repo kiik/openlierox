@@ -128,17 +128,6 @@ p.write_text(src)
 PYEOF
 fi
 
-# boost-hdr: symlink to whatever boost headers the host system has.
-if [ ! -e boost-hdr/boost ]; then
-    mkdir -p boost-hdr
-    if [ -d /usr/include/boost ]; then
-        ln -sfn /usr/include/boost boost-hdr/boost
-        echo "boost-hdr -> /usr/include/boost"
-    else
-        echo "WARNING: /usr/include/boost not found. Install libboost-dev or set up boost-hdr/boost manually." >&2
-    fi
-fi
-
 # Mozilla CA certificate bundle for libcurl's mbedTLS backend on Android.
 # (Linux/macOS use the OS cert store, Windows uses CURLSSLOPT_NATIVE_CA.)
 # Pinned to a dated release and verified against an in-tree sha256 so a

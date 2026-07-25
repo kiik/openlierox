@@ -18,7 +18,7 @@ extern "C"
 #include <utility>
 #include <map>
 #include <assert.h>
-#include <boost/function.hpp>
+#include <functional>
 
 class BitStream;
 struct CmdLineIntf;
@@ -484,7 +484,7 @@ struct AssertStack
 #endif
 
 struct LuaCustomPrintScope : DontCopyTag {
-	typedef boost::function<int(lua_State*)> Func;
+	typedef std::function<int(lua_State*)> Func;
 
 	LuaContext& context;
 	Func printFunc;

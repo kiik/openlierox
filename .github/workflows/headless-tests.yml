@@ -23,9 +23,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             cmake build-essential \
-            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev \
+            libsdl2-dev libsdl2-image-dev \
             libxml2-dev libgd-dev zlib1g-dev libzip-dev libx11-dev \
-            libcurl4-openssl-dev libboost-dev libopenal-dev libalut-dev \
+            libcurl4-openssl-dev libopenal-dev \
             libvorbis-dev libyaml-cpp-dev binutils-dev libiberty-dev \
             python3-pytest
 
@@ -49,9 +49,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             cmake build-essential \
-            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev \
+            libsdl2-dev libsdl2-image-dev \
             libxml2-dev libgd-dev zlib1g-dev libzip-dev libx11-dev \
-            libcurl4-openssl-dev libboost-dev libopenal-dev libalut-dev \
+            libcurl4-openssl-dev libopenal-dev \
             libvorbis-dev libyaml-cpp-dev binutils-dev libiberty-dev
 
       - name: Build unit tests

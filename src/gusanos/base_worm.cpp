@@ -36,8 +36,7 @@
 #include <math.h>
 #include <string>
 #include <vector>
-#include <boost/lexical_cast.hpp>
-using boost::lexical_cast;
+#include "util/StringConv.h"
 
 
 LuaReference CWorm::metaTable;
@@ -575,10 +574,10 @@ void CWorm::draw(CViewport* viewport)
 
 #ifdef DEBUG_WORM_REACTS
 		{
-			gusGame.infoFont->draw(where, lexical_cast<std::string>(reacts[Up]), rPos.x, rPos.y + 15, 0);
-			gusGame.infoFont->draw(where, lexical_cast<std::string>(reacts[Down]), rPos.x, rPos.y - 15, 0);
-			gusGame.infoFont->draw(where, lexical_cast<std::string>(reacts[Left]), rPos.x + 15, rPos.y, 0);
-			gusGame.infoFont->draw(where, lexical_cast<std::string>(reacts[Right]), rPos.x - 15, rPos.y, 0);
+			gusGame.infoFont->draw(where, to_string(reacts[Up]), rPos.x, rPos.y + 15, 0);
+			gusGame.infoFont->draw(where, to_string(reacts[Down]), rPos.x, rPos.y - 15, 0);
+			gusGame.infoFont->draw(where, to_string(reacts[Left]), rPos.x + 15, rPos.y, 0);
+			gusGame.infoFont->draw(where, to_string(reacts[Right]), rPos.x - 15, rPos.y, 0);
 		}
 #endif
 

@@ -22,22 +22,19 @@ SET(SYSTEM_DATA_DIR "/usr/share/games" CACHE STRING "system data dir")
 OPTION(DEBUG "enable debug build" Yes)
 OPTION(DEDICATED_ONLY "dedicated_only - without gfx and sound" No)
 OPTION(G15 "G15 support" No)
-OPTION(X11 "X11 clipboard / notify" Yes)
+OPTION(X11 "X11 clipboard / notify (legacy; code is currently stubbed out)" No)
 OPTION(HAWKNL_BUILTIN "HawkNL builtin support" Yes)
 OPTION(LIBZIP_BUILTIN "LibZIP builtin support" No)
 OPTION(LIBLUA_BUILTIN "LibLua builtin support" Yes)
 OPTION(STLPORT "STLport support" No)
-OPTION(GCOREDUMPER "Google Coredumper support" No)
 OPTION(PCH "Precompiled header (CMake 2.6 only)" No)
 OPTION(ADVASSERT "Advanced assert" No)
 OPTION(PYTHON_DED_EMBEDDED "Python embedded in dedicated server"  No)
 OPTION(OPTIM_PROJECTILES "Enable optimisations for projectiles" Yes)
 OPTION(MEMSTATS "Enable memory statistics and debugging" No)
 OPTION(HASBFD "Use libbfd for extended stack traces" Yes)
-OPTION(BREAKPAD "Google Breakpad support" No)
 OPTION(LINENOISE "builtin Linenose support (readline/libedit replacement)" Yes)
 OPTION(DISABLE_JOYSTICK "Disable joystick support" No)
-OPTION(BOOST_LINK_STATIC "Link boost-libs statically" No)
 OPTION(MINGW_CROSS_COMPILE "Cross-compile Windows .EXE using i586-mingw32msvc-cc compiler" No)
 
 IF (DEBUG)
@@ -60,7 +57,6 @@ IF(UNIX)
 		SET(LIBZIP_BUILTIN ON)
 		SET(LIBLUA_BUILTIN ON)
 		SET(X11 OFF)
-		#SET(BOOST_LINK_STATIC ON)
 		# libbfd isn't available by default on macOS.
 		SET(HASBFD OFF)
 		# Use the plain int main() from src/main.cpp — the legacy
@@ -81,7 +77,6 @@ IF(UNIX)
 		SET(LIBZIP_BUILTIN ON)
 		SET(LIBLUA_BUILTIN ON)
 		SET(X11 OFF)
-		SET(BOOST_LINK_STATIC ON)
 	ENDIF (MINGW_CROSS_COMPILE)
 ELSE(UNIX)
 	IF(WIN32)
@@ -104,9 +99,7 @@ MESSAGE( "HAWKNL_BUILTIN = ${HAWKNL_BUILTIN}" )
 MESSAGE( "LIBZIP_BUILTIN = ${LIBZIP_BUILTIN}" )
 MESSAGE( "LIBLUA_BUILTIN = ${LIBLUA_BUILTIN}" )
 MESSAGE( "STLPORT = ${STLPORT}" )
-MESSAGE( "GCOREDUMPER = ${GCOREDUMPER}" )
 MESSAGE( "HASBFD = ${HASBFD}" )
-MESSAGE( "BREAKPAD = ${BREAKPAD}" )
 MESSAGE( "LINENOISE = ${LINENOISE}" )
 MESSAGE( "CMAKE_C_COMPILER = ${CMAKE_C_COMPILER}" )
 MESSAGE( "CMAKE_C_FLAGS = ${CMAKE_C_FLAGS}" )
@@ -211,20 +204,10 @@ IF(APPLE)
 	SET(ALL_SRCS ${OLXROOTDIR}/src/MacHelpers.m ${ALL_SRCS})
 ENDIF(APPLE)
 
-IF (BREAKPAD)
-	INCLUDE_DIRECTORIES(${OLXROOTDIR}/libs/breakpad/src)
-	INCLUDE_DIRECTORIES(${OLXROOTDIR}/optional-includes/breakpad)
-	ADD_DEFINITIONS("'-DBP_LOGGING_INCLUDE=\"breakpad_logging.h\"'")
-
-	IF(MINGW_CROSS_COMPILE OR WIN32)
-
-	ELSE(MINGW_CROSS_COMPILE OR WIN32)
-		EXEC_PROGRAM(python ARGS ${CMAKE_CURRENT_SOURCE_DIR}/libs/breakpad_getallsources.py OUTPUT_VARIABLE BREAKPAD_SRCS)
-		SET(ALL_SRCS ${BREAKPAD_SRCS} ${ALL_SRCS})		
-	ENDIF(MINGW_CROSS_COMPILE OR WIN32)
-ELSE (BREAKPAD)
-	ADD_DEFINITIONS(-DNBREAKPAD)
-ENDIF (BREAKPAD)
+# Google Breakpad support was removed: the 14 MB vendored tree under
+# libs/breakpad was disabled in every build config. The src/breakpad wrapper
+# is kept but always compiles to a stub via NBREAKPAD.
+ADD_DEFINITIONS(-DNBREAKPAD)
 
 IF (LINENOISE AND NOT WIN32)
 	ADD_DEFINITIONS(-DHAVE_LINENOISE)
@@ -235,13 +218,6 @@ ENDIF ()
 IF (DISABLE_JOYSTICK)
 	ADD_DEFINITIONS(-DDISABLE_JOYSTICK)
 ENDIF (DISABLE_JOYSTICK)
-
-IF (GCOREDUMPER)
-	INCLUDE_DIRECTORIES(${OLXROOTDIR}/libs/coredumper/src)
-	ADD_DEFINITIONS(-DGCOREDUMPER)
-	AUX_SOURCE_DIRECTORY(${OLXROOTDIR}/libs/coredumper/src COREDUMPER_SRCS)
-	SET(ALL_SRCS ${ALL_SRCS} ${COREDUMPER_SRCS})
-ENDIF (GCOREDUMPER)
 
 IF (HAWKNL_BUILTIN)
 	INCLUDE_DIRECTORIES(${OLXROOTDIR}/libs/hawknl/include)
@@ -324,7 +300,7 @@ ENDIF(MEMSTATS)
 # Generic defines
 IF(WIN32)
 	IF(MSVC)
-		ADD_DEFINITIONS(-D_CRT_SECURE_NO_DEPRECATE -DHAVE_BOOST -DZLIB_WIN32_NODLL)
+		ADD_DEFINITIONS(-D_CRT_SECURE_NO_DEPRECATE -DZLIB_WIN32_NODLL)
 		SET(OPTIMIZE_COMPILER_FLAG /Ox /Ob2 /Oi /Ot /GL)
 		IF(DEBUG)
 			ADD_DEFINITIONS(-DUSE_DEFAULT_MSC_DELEAKER)
@@ -333,7 +309,7 @@ IF(WIN32)
 		ENDIF(DEBUG)
 	ELSE()
 		# MinGW on Windows (MSYS2)
-		ADD_DEFINITIONS(-DHAVE_BOOST -DZLIB_WIN32_NODLL)
+		ADD_DEFINITIONS(-DZLIB_WIN32_NODLL)
 		ADD_DEFINITIONS(-D_WIN32_WINNT=0x0601)
 		SET(OPTIMIZE_COMPILER_FLAG -O3)
 		# The legacy widget code has several "DWORD from pointer"
@@ -343,23 +319,21 @@ IF(WIN32)
 	ENDIF()
 	INCLUDE_DIRECTORIES(${OLXROOTDIR}/libs/hawknl/include
 				${OLXROOTDIR}/libs/hawknl/src
-				${OLXROOTDIR}/libs/libzip
-				${OLXROOTDIR}/libs/boost_process)
+				${OLXROOTDIR}/libs/libzip)
 ELSE(WIN32)
 	ADD_DEFINITIONS(-Wall)
 	# -std= belongs to CXX only — AppleClang rejects it for C sources.
 	add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-std=c++0x>")
 
 	IF(MINGW_CROSS_COMPILE)
-		ADD_DEFINITIONS(-DHAVE_BOOST -DZLIB_WIN32_NODLL -DLIBXML_STATIC -DNONDLL -DCURL_STATICLIB -D_XBOX # _XBOX to link OpenAL statically
+		ADD_DEFINITIONS(-DZLIB_WIN32_NODLL -DLIBXML_STATIC -DNONDLL -DCURL_STATICLIB -D_XBOX # _XBOX to link OpenAL statically
 							-D_WIN32_WINNT=0x0500 -D_WIN32_WINDOWS=0x0500 -DWINVER=0x0500)
 		INCLUDE_DIRECTORIES(
 					${OLXROOTDIR}/build/mingw/include
 					${OLXROOTDIR}/libs/hawknl/include
 					${OLXROOTDIR}/libs/hawknl/src
 					${OLXROOTDIR}/libs/libzip
-					${OLXROOTDIR}/libs/lua
-					${OLXROOTDIR}/libs/boost_process)
+					${OLXROOTDIR}/libs/lua)
 		# as long as we dont have breakpad, this doesnt make sense
 		ADD_DEFINITIONS(-gdwarf-2 -g1) # By default GDB uses STABS and produces 300Mb exe - DWARF will produce 40Mb and no line numbers, -g2 will give 170Mb
 	ELSE(MINGW_CROSS_COMPILE)
@@ -384,35 +358,29 @@ ELSEIF(APPLE)
 	find_package(PkgConfig REQUIRED)
 	pkg_check_modules(SDL2 REQUIRED sdl2)
 	pkg_check_modules(SDL2_IMAGE REQUIRED SDL2_image)
-	pkg_check_modules(SDL2_MIXER REQUIRED SDL2_mixer)
 	pkg_check_modules(LIBXML2 REQUIRED libxml-2.0)
 	pkg_check_modules(LIBZIP REQUIRED libzip)
 	pkg_check_modules(LIBGD REQUIRED gdlib)
 	pkg_check_modules(VORBISFILE REQUIRED vorbisfile)
 	pkg_check_modules(OPENAL REQUIRED openal)
-	pkg_check_modules(FREEALUT REQUIRED freealut)
 	pkg_check_modules(YAMLCPP REQUIRED yaml-cpp)
 	INCLUDE_DIRECTORIES(
 		${SDL2_INCLUDE_DIRS}
 		${SDL2_IMAGE_INCLUDE_DIRS}
-		${SDL2_MIXER_INCLUDE_DIRS}
 		${LIBXML2_INCLUDE_DIRS}
 		${LIBZIP_INCLUDE_DIRS}
 		${LIBGD_INCLUDE_DIRS}
 		${VORBISFILE_INCLUDE_DIRS}
 		${OPENAL_INCLUDE_DIRS}
-		${FREEALUT_INCLUDE_DIRS}
 		${YAMLCPP_INCLUDE_DIRS})
 	link_directories(
 		${SDL2_LIBRARY_DIRS}
 		${SDL2_IMAGE_LIBRARY_DIRS}
-		${SDL2_MIXER_LIBRARY_DIRS}
 		${LIBXML2_LIBRARY_DIRS}
 		${LIBZIP_LIBRARY_DIRS}
 		${LIBGD_LIBRARY_DIRS}
 		${VORBISFILE_LIBRARY_DIRS}
 		${OPENAL_LIBRARY_DIRS}
-		${FREEALUT_LIBRARY_DIRS}
 		${YAMLCPP_LIBRARY_DIRS})
 ELSEIF(MINGW_CROSS_COMPILE)
 	INCLUDE_DIRECTORIES(${OLXROOTDIR}/build/mingw/include/SDL)
@@ -421,11 +389,10 @@ ELSEIF(WIN32)
 	find_package(PkgConfig REQUIRED)
 	pkg_check_modules(SDL2 REQUIRED sdl2)
 	pkg_check_modules(SDL2_IMAGE REQUIRED SDL2_image)
-	pkg_check_modules(SDL2_MIXER REQUIRED SDL2_mixer)
 	pkg_check_modules(LIBXML2 REQUIRED libxml-2.0)
 	pkg_check_modules(YAMLCPP REQUIRED yaml-cpp)
 	INCLUDE_DIRECTORIES(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIRS}
-				${SDL2_MIXER_INCLUDE_DIRS} ${LIBXML2_INCLUDE_DIRS}
+				${LIBXML2_INCLUDE_DIRS}
 				${YAMLCPP_INCLUDE_DIRS})
 ELSE()
 	EXEC_PROGRAM(sdl2-config ARGS --cflags OUTPUT_VARIABLE SDLCFLAGS)
@@ -447,26 +414,31 @@ IF(G15)
 ENDIF(G15)
 
 IF(HASBFD)
-	ADD_DEFINITIONS("-DHASBFD")
-	SET(LIBS ${LIBS} dl bfd opcodes iberty)
-	INCLUDE_DIRECTORIES(/usr/include/libiberty)
+	# libbfd (binutils-dev) + libiberty (libiberty-dev) give extended,
+	# file:line stack traces. They are optional: without them the code
+	# falls back to glibc backtrace_symbols() (see Debug_DumpCallstack.cpp).
+	# Probe for the headers and libraries rather than fail the build when
+	# they are missing, and degrade gracefully to the fallback.
+	find_path(BFD_INCLUDE_DIR bfd.h)
+	find_path(IBERTY_INCLUDE_DIR libiberty.h PATH_SUFFIXES libiberty)
+	find_library(BFD_LIBRARY NAMES bfd)
+	find_library(OPCODES_LIBRARY NAMES opcodes)
+	find_library(IBERTY_LIBRARY NAMES iberty)
+	IF(BFD_INCLUDE_DIR AND IBERTY_INCLUDE_DIR AND BFD_LIBRARY AND OPCODES_LIBRARY AND IBERTY_LIBRARY)
+		ADD_DEFINITIONS("-DHASBFD")
+		SET(LIBS ${LIBS} dl bfd opcodes iberty)
+		INCLUDE_DIRECTORIES(${IBERTY_INCLUDE_DIR})
+		MESSAGE(STATUS "HASBFD: libbfd/libiberty found, extended stack traces enabled")
+	ELSE()
+		MESSAGE(WARNING "HASBFD requested but libbfd/libiberty not found; "
+			"falling back to glibc backtrace_symbols(). Install binutils-dev "
+			"and libiberty-dev for file:line stack traces, or pass -DHASBFD=Off "
+			"to silence this warning.")
+	ENDIF()
 ENDIF(HASBFD)
 
 
-IF(BOOST_LINK_STATIC)
-	# seems this is the way for Debian:
-	SET(LIBS ${LIBS} boost_signals.a)
-	IF(MINGW_CROSS_COMPILE)
-		SET(LIBS ${LIBS} boost_system.a)
-	ENDIF(MINGW_CROSS_COMPILE)
-	# and this on newer CMake (>=2.6?)
-	SET(LIBS ${LIBS} /usr/lib/x86_64-linux-gnu/libboost_signals.a /usr/lib/x86_64-linux-gnu/libboost_system.a)
-ELSE(BOOST_LINK_STATIC)
-	FIND_PACKAGE(Boost REQUIRED)
-	SET(LIBS ${LIBS} ${Boost_LIBRARIES})
-ENDIF(BOOST_LINK_STATIC)
-
-SET(LIBS ${LIBS} alut openal vorbisfile)
+SET(LIBS ${LIBS} openal vorbisfile)
 
 SET(LIBS ${LIBS} curl)
 
@@ -479,7 +451,7 @@ if(APPLE)
 endif(APPLE)
 
 IF(WIN32 AND MSVC)
-	SET(LIBS ${LIBS} SDL_mixer wsock32 wininet dbghelp
+	SET(LIBS ${LIBS} wsock32 wininet dbghelp
 				"${OLXROOTDIR}/build/msvc/libs/SDLmain.lib"
 				"${OLXROOTDIR}/build/msvc/libs/libxml2.lib"
 				"${OLXROOTDIR}/build/msvc/libs/NLstatic.lib"
@@ -494,12 +466,12 @@ ELSEIF(WIN32)
 	SET(LIBS mingw32
 				-Wl,--whole-archive SDL2main -Wl,--no-whole-archive
 				${LIBS}
-				SDL2_mixer xml2 zip gd z
+				xml2 zip gd z
 				wsock32 ws2_32 wininet dbghelp iphlpapi
 				version
 				pthread)
 ELSEIF(APPLE)
-	SET(LIBS ${LIBS} SDL2_mixer xml2 zip gd z)
+	SET(LIBS ${LIBS} xml2 zip gd z)
 ELSEIF(MINGW_CROSS_COMPILE)
 
 ELSE()
@@ -560,7 +532,7 @@ IF (NOT DEDICATED_ONLY)
 ENDIF (NOT DEDICATED_ONLY)
 
 IF(MINGW_CROSS_COMPILE)
-	SET(LIBS ${LIBS} SDLmain SDL boost_system jpeg png vorbisenc vorbis ogg dbghelp dsound dxguid wsock32 wininet wldap32 user32 gdi32 winmm version kernel32)
+	SET(LIBS ${LIBS} SDLmain SDL jpeg png vorbisenc vorbis ogg dbghelp dsound dxguid wsock32 wininet wldap32 user32 gdi32 winmm version kernel32)
 ENDIF(MINGW_CROSS_COMPILE)
 
 # Resolve the build's git revision so it can be logged at startup.

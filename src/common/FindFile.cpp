@@ -25,10 +25,11 @@
 #endif
 
 #include "FindFile.h"
+#include <memory>
 #include "StringUtils.h"
 #include "Options.h"
 #include "Debug.h"
-#include <boost/crc.hpp>
+#include "util/CRC32.h"
 
 #ifdef __ANDROID__
 #include <SDL_system.h>
@@ -277,7 +278,7 @@ size_t GetLastName(const std::string& fullname, const char** seperators)
 struct ExactFilenameCache {
 	struct simple_crc32_hasher {
 		size_t operator() (const std::string& str) const {
-			boost::crc_32_type crc;
+			CRC32 crc;
 			const uchar* c = (const uchar*) &str[0];
 			const uchar* E = c + str.size();
 			for(; c < E; ++c)
@@ -1138,7 +1139,7 @@ SDL_RWops *RWopsFromFP(FILE *fp, bool autoclose)  {
 
 struct FileIter : Iterator<std::string> {
 	typedef std::set<std::string> List;
-	boost::shared_ptr<List> files;
+	std::shared_ptr<List> files;
 	List::iterator it;
 	
 	FileIter() : files(new List) {}

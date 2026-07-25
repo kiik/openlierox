@@ -11,8 +11,6 @@
 #include "util/stringbuild.h"
 #include "game/Game.h"
 #include "CClientNetEngine.h"
-#include <boost/lambda/lambda.hpp>
-#include <boost/lambda/bind.hpp>
 
 #include <string>
 #include <list>
@@ -22,10 +20,6 @@
 static_assert( C_LocalPlayer_ActionCount == CWormHumanInputHandler::ACTION_COUNT, "actioncount_mismatch" );
 
 std::string _event(size_t index, CWormHumanInputHandler::Actions action, bool start) {
-	using namespace boost::lambda;
-	using boost::lambda::_1;
-	using boost::lambda::_2;
-
 	assert((int)action >= 0 && (int)action < CWormHumanInputHandler::ACTION_COUNT);
 
 	if ( index < game.localPlayers.size() )
@@ -38,7 +32,7 @@ std::string _event(size_t index, CWormHumanInputHandler::Actions action, bool st
 			ignore = true;
 
 		LuaCallbackProxy::PostHandler f =
-				(var(ignore) |= (_2 > 0 && bind(&LuaContext::tobool, _1, -1)));
+				[&ignore](LuaContext& ctx, int n){ ignore |= (n > 0 && ctx.tobool(-1)); };
 
 		LUACALLBACK(localplayerEvent+action).call(1, f)(player.getLuaReference())(start)();
 		LUACALLBACK(localplayerEventAny).call(1, f)(player.getLuaReference())((int)action)(start)();
@@ -65,9 +59,6 @@ std::string eventStop(size_t index, CWormHumanInputHandler::Actions action, std:
 
 void registerPlayerInput()
 {
-	using namespace boost::lambda;
-	using boost::lambda::_1;
-
 	for ( size_t i = 0; i < GusGame::MAX_LOCAL_PLAYERS; ++i)
 	{
 		static char const* actionNames[] =
@@ -79,8 +70,8 @@ void registerPlayerInput()
 		for(int action = CWormHumanInputHandler::LEFT; action < CWormHumanInputHandler::ACTION_COUNT; ++action)
 		{
 			console.registerCommands()
-				((S_("+P") << i << actionNames[action]), boost::lambda::bind(&eventStart, i, (CWormHumanInputHandler::Actions)action, _1))
-				((S_("-P") << i << actionNames[action]), boost::lambda::bind(&eventStop, i, (CWormHumanInputHandler::Actions)action, _1))
+				((S_("+P") << i << actionNames[action]), [i, action](std::list<std::string> const& args){ return eventStart(i, (CWormHumanInputHandler::Actions)action, args); })
+				((S_("-P") << i << actionNames[action]), [i, action](std::list<std::string> const& args){ return eventStop(i, (CWormHumanInputHandler::Actions)action, args); })
 			;
 		}
 	}

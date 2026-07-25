@@ -29,17 +29,9 @@
 
 #include <vector>
 #include <iostream>
-#define BOOST_NO_MT
-#include <boost/pool/pool.hpp>
 #include "CodeAttributes.h"
 
 using namespace std;
-
-namespace
-{
-
-	boost::pool<> particlePool(sizeof(Particle));
-}
 
 class ParticleInterceptor : public Net_NodeReplicationInterceptor
 {
@@ -98,15 +90,13 @@ Net_ClassID Particle::classID = INVALID_CLASS_ID;
 
 void* Particle::operator new(size_t count)
 {
-
-	assert(count <= sizeof(Particle));
-	return particlePool.malloc();
+	return ::operator new(count);
 }
 
 
 void Particle::operator delete(void* block)
 {
-	particlePool.free(block);
+	::operator delete(block);
 }
 
 Particle::Particle(PartType *type, Vec pos_, Vec spd_, int dir, CWormInputHandler* owner, Angle angle)

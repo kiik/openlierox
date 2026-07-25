@@ -2,16 +2,27 @@
 #define VERMES_MATH_H
 
 #include <cmath>
-#include <boost/random.hpp>
+#include <random>
 #include "CodeAttributes.h"
 
 /**
  * Magic number goodness!
  */
 
-extern boost::mt19937 rndgen;
-extern boost::uniform_01<boost::mt19937> rnd;
-extern boost::variate_generator<boost::mt19937, boost::uniform_real<> > midrnd;
+extern std::mt19937 rndgen;
+
+// Callable wrappers replacing the former boost::uniform_01 / variate_generator
+// globals. Both draw from the shared rndgen; the randomness here is cosmetic
+// (particle, sound and effect variation), not network-deterministic.
+struct Rnd01 {
+	double operator()() { return std::uniform_real_distribution<double>(0.0, 1.0)(rndgen); }
+};
+extern Rnd01 rnd;
+
+struct RndMid {
+	double operator()() { return std::uniform_real_distribution<double>(-0.5, 0.5)(rndgen); }
+};
+extern RndMid midrnd;
 
 float const Pi = 3.14159265358979323846f;
 
@@ -27,8 +38,9 @@ INLINE float rad2deg( float Radians )
 
 INLINE unsigned long rndInt(unsigned long max)
 {
+	// mt19937 emits 32-bit values, so this scales rndgen() into [0, max).
 	return static_cast<unsigned long>(
-		(static_cast<unsigned long long>(rndgen()) * max) >> (CHAR_BIT * sizeof(boost::mt19937::result_type))
+		(static_cast<unsigned long long>(rndgen()) * max) >> 32
 	);
 }
 

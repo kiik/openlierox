@@ -12,7 +12,6 @@ override_dh_auto_configure:
 		-DHAWKNL_BUILTIN=1 \
 		-DLIBZIP_BUILTIN=0 \
 		-DLIBLUA_BUILTIN=0 \
-		-DBOOST_LINK_STATIC=0 \
 		-DBREAKPAD=Off \
 		-DDEBUG=0 \
 		-DSYSTEM_DATA_DIR=/usr/share/games

@@ -9,7 +9,7 @@
 #ifndef OpenLieroX_WeakRef_h
 #define OpenLieroX_WeakRef_h
 
-#include <boost/shared_ptr.hpp>
+#include <memory>
 
 /*
 This is basically `shared_ptr<T*>`, wrapped with some common functions.
@@ -23,7 +23,7 @@ When you need a `WeakRef` to it, you would copy it from `thisRef`.
 */
 template<typename T>
 struct WeakRef {
-	typedef boost::shared_ptr<T*> SharedT;
+	typedef std::shared_ptr<T*> SharedT;
 	SharedT ref;
 	
 	WeakRef() {}

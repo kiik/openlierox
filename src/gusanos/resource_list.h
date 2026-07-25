@@ -8,7 +8,7 @@
 #include <iostream>
 #include "util/macros.h"
 #include "Debug.h"
-#include <boost/cstdint.hpp>
+#include <stdint.h>
 
 /*
 namespace fs {

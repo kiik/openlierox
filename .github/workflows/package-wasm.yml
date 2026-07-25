@@ -30,7 +30,6 @@ jobs:
             build-essential \
             git \
             python3 \
-            libboost-dev \
             zip
 
       - name: Cache Emscripten SDK

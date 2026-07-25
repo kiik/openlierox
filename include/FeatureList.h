@@ -20,7 +20,7 @@
 #include <set>
 #include <map>
 #include <stdint.h>
-#include <boost/function.hpp>
+#include <functional>
 #include "Iter.h"
 #include "CScriptableVars.h"
 #include "Version.h"
@@ -54,7 +54,7 @@ struct Feature {
 	bool serverSideOnly; // if true, all the following is just ignored
 	bool optionalForClient; // Optional client-sided feature, like vision cone drawn for seekers, or SuicideDecreasesScore which required for precise damage calculation in scoreboard
 	
-	typedef boost::function<Var (const Var& preset)> GetValueFunction;
+	typedef std::function<Var (const Var& preset)> GetValueFunction;
 	GetValueFunction getValueFct; // if set, it uses the return value for hostGet
 	
 	

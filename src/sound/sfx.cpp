@@ -1,11 +1,8 @@
 #ifndef DEDICATED_ONLY
 
-#include <boost/assign/list_inserter.hpp>
-using namespace boost::assign;
 
 #include <vector>
 #include <list>
-#include <boost/utility.hpp>
 
 #include "sfx.h"
 #include "sfxdriver.h"

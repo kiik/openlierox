@@ -225,8 +225,6 @@ target_include_directories(openlierox PRIVATE
     "${OLX_ROOT}/libs/hawknl/include"
     "${OLX_ROOT}/libs/libzip"
     "${OLX_ROOT}/libs/lua"
-    "${OLX_ROOT}/libs/boost_process"
-    "${DEPS_DIR}/boost-hdr"
     "${DEPS_DIR}/libgd/src"
     "${CMAKE_BINARY_DIR}/libgd"
     "${CMAKE_BINARY_DIR}/libgd/src"
@@ -251,7 +249,6 @@ message(STATUS "OLX git hash: ${OLX_GIT_HASH}")
 
 target_compile_definitions(openlierox PRIVATE
     NBREAKPAD
-    HAVE_BOOST
     OLX_GIT_HASH="${OLX_GIT_HASH}"
     SYSTEM_DATA_DIR="/")
 

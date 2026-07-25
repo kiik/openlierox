@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 #include <utility>
-#include <boost/function.hpp>
+#include <functional>
 #include "util/WeakRef.h"
 #include "CScriptableVars.h"
 #include "gusanos/luaapi/classes.h"
@@ -37,15 +37,15 @@ struct AttrDesc {
 	bool isStatic; // if true -> use memOffsets; otherwise, dyn funcs
 	intptr_t attrMemOffset;
 	intptr_t attrExtMemOffset;
-	boost::function<ScriptVar_t (const BaseObject* base, const AttrDesc* attrDesc)> dynGetValue;
-	boost::function<AttrExt& (BaseObject* base, const AttrDesc* attrDesc)> dynGetAttrExt;
+	std::function<ScriptVar_t (const BaseObject* base, const AttrDesc* attrDesc)> dynGetValue;
+	std::function<AttrExt& (BaseObject* base, const AttrDesc* attrDesc)> dynGetAttrExt;
 	std::string attrName;
 	AttrId attrId;
 	ScriptVar_t defaultValue;
 
 	bool serverside;
 	bool serverCanUpdate;
-	boost::function<void(BaseObject* base, const AttrDesc* attrDesc, ScriptVar_t oldValue)> onUpdate;
+	std::function<void(BaseObject* base, const AttrDesc* attrDesc, ScriptVar_t oldValue)> onUpdate;
 	
 	AttrDesc()
 	: objTypeId(0), attrType(SVT_INVALID), isStatic(true), attrMemOffset(0), attrExtMemOffset(0), attrId(0),
@@ -130,7 +130,7 @@ struct ObjAttrRef {
 };
 
 void registerAttrDesc(AttrDesc& attrDesc);
-void iterAttrDescs(ClassId classId, bool withSuperClasses, boost::function<void(const AttrDesc* attrDesc)> callback);
+void iterAttrDescs(ClassId classId, bool withSuperClasses, std::function<void(const AttrDesc* attrDesc)> callback);
 std::vector<const AttrDesc*> getAttrDescs(ClassId classId, bool withSuperClasses);
 const AttrDesc* findAttrDescByName(const std::string& name, ClassId classId, bool withSuperClasses);
 

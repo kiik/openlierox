@@ -15,7 +15,7 @@
 #include <set>
 #include <list>
 #include <typeinfo>
-#include <boost/shared_ptr.hpp>
+#include <memory>
 #include "ThreadPool.h"
 #include "Mutex.h"
 
@@ -35,7 +35,7 @@ struct Task : Action {
 	TaskManager* manager;
 	std::string name;
 	enum State { TS_QUEUED, TS_WAITFORIMMSTART, TS_RUNNING, TS_RUNNINGQUEUED, TS_INVALID } state;
-	boost::shared_ptr<Mutex> mutex;
+	std::shared_ptr<Mutex> mutex;
 	volatile bool breakSignal;
 	Task* replacingTask;
 

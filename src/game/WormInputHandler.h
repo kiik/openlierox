@@ -17,9 +17,9 @@
 #include "gusanos/netstream.h"
 #include "gusanos/luaapi/types.h"
 #include <stdexcept>
-#include <boost/shared_ptr.hpp>
+#include <memory>
 #include <vector>
-using boost::shared_ptr;
+using std::shared_ptr;
 
 struct PlayerOptions;
 class CWorm;

@@ -2,7 +2,7 @@
 #define LUA_TYPES_H
 
 #include <cstring> //size_t
-#include <boost/shared_ptr.hpp>
+#include <memory>
 #include <map>
 #include "CodeAttributes.h"
 extern "C" {
@@ -20,7 +20,7 @@ public:
 private:
 	bool isNilRef;
 	typedef std::map<WeakRef<lua_State>, Idx> IdxMap;
-	boost::shared_ptr<IdxMap> idxs;
+	std::shared_ptr<IdxMap> idxs;
 	void cleanup();
 
 public:

@@ -45,7 +45,7 @@ CWormInputHandler::Stats::~Stats()
 
 void CWormInputHandler::gusInit(CWorm* worm)
 {
-	stats = boost::shared_ptr<Stats>(new Stats());
+	stats = std::shared_ptr<Stats>(new Stats());
 	deleteMe=(false);
 	
 	local=(false);
