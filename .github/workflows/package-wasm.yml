@@ -2,6 +2,10 @@ name: Build WebAssembly
 
 on:
   pull_request:
+  # Build on direct pushes to develop too, so there's a prebuilt to test
+  # between PRs. Artifacts land on the run; no release is cut.
+  push:
+    branches: [develop]
   # Reusable: invoked by release-beta.yml on merges to master.
   workflow_call:
 
