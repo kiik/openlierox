@@ -135,6 +135,15 @@ bool InitializeAuxLib()
 	}
 
 	if(bJoystickSupport) {
+		// The Steam Controller emits no standard gamepad HID on its own, so
+		// unless the kernel hid-steam driver or a running Steam Input exposes
+		// it, SDL sees nothing. Enable SDL's built-in HIDAPI Steam driver so
+		// SDL drives the pad directly from raw HID, regardless of Steam. The
+		// #ifdef keeps this compiling against SDL2 versions that predate the
+		// hint. Must be set before the gamecontroller subsystem is initialized.
+#ifdef SDL_HINT_JOYSTICK_HIDAPI_STEAM
+		SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_STEAM, "1");
+#endif
 		if(SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) != 0) {
 			warnings << "WARNING: couldn't init gamecontroller/joystick subystem: " << SDL_GetError() << endl;
 			bJoystickSupport = false;
