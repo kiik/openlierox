@@ -56,21 +56,21 @@ jobs:
       - name: Package
         run: ./.github/workflows/package-windows.sh
 
-      # Zip the bundle in the build job (like mac and linux-bundle) so a single
-      # ready-to-publish archive is uploaded rather than a loose directory that
-      # the release job has to re-zip.
-      - name: Archive bundle
+      # Upload the bundle directory itself, not a zip we made. actions/upload-artifact
+      # always zips the artifact when it's downloaded, so handing it a zip produces
+      # a zip-inside-a-zip (the download nests openlierox-*-windows three folders
+      # deep). Uploading the plain directory gives a single openlierox-<ver>-windows.zip
+      # containing the bundle folder. Unlike the mac/linux bundles there is no
+      # executable bit to preserve on Windows, so no self-zip is needed. The release
+      # job (master-build.yaml) zips any directory artifact into the release asset,
+      # so it still gets one ready-to-publish archive.
+      - name: Detect bundle name
         id: bundle
-        run: |
-          set -euo pipefail
-          cd distrib
-          dir="$(basename openlierox-*-windows)"
-          zip -r -q "${dir}.zip" "$dir"
-          echo "name=${dir}.zip" >> "$GITHUB_OUTPUT"
+        run: echo "name=$(basename distrib/openlierox-*-windows)" >> "$GITHUB_OUTPUT"
 
       - name: Upload openlierox-windows
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.bundle.outputs.name }}
-          path: distrib/openlierox-*-windows.zip
+          path: distrib
           if-no-files-found: error
