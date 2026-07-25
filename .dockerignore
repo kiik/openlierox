@@ -1,0 +1,16 @@
+# Build context for docker/Dockerfile (built from the repo root).
+# Keep it small: only the source tree is needed to compile.
+.git
+build-output
+build/android/deps
+build/android/output
+build/wasm/deps
+mac-stage
+distrib
+*.o
+*.a
+*.log
+__pycache__
+*.pyc
+.render-home
+.render-out
