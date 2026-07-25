@@ -163,6 +163,39 @@ the absolute target angle the stick points at
 - **SDL sticks**: left/up = negative, right/down = positive. Deadzone is
   `getPadStickDeadzone()`, derived from `JOY_DEADZONE_PERCENT` (60% → 19660).
 
+## Steam Controller
+
+The Steam Controller reaches the game through the same `SDL_GameController`
+path as any other pad — the bundled `gamecontrollerdb.txt` already carries the
+`Valve Steam Controller` and `Valve Steam Deck` mappings, so buttons and
+twin-stick aim need no special code. The catch is that the controller emits no
+standard gamepad HID on its own; something has to expose it first. On Linux the
+`hid-steam` kernel driver does this, and a running Steam Input does it on any
+OS — but OLX is not a Steam app, so on a machine without either the pad is
+invisible.
+
+To cover that case, `InitializeAuxLib()` enables SDL's built-in HIDAPI Steam
+driver (`SDL_HINT_JOYSTICK_HIDAPI_STEAM`) before the gamecontroller subsystem
+comes up, so SDL drives the pad directly from raw HID regardless of Steam. It
+needs an SDL2 built with HIDAPI (the norm) and, on Linux, read/write access to
+the controller's `hidraw` node. It is a no-op in the WASM build, where SDL has
+no USB backend and the browser only sees whatever the OS already exposes as a
+standard gamepad.
+
+### Testing under WSL2
+
+A stock WSL2 kernel has no USB passthrough and no `/dev/input`, so a controller
+is invisible there. It can still be tested with a WSL2 kernel that includes the
+USB/IP client (`vhci-hcd`) and `hidraw`, plus [usbipd-win][usbipd] on the host:
+`usbipd bind` then `usbipd attach --wsl` the controller (Valve VID `28de`), and
+it appears as a `hidraw` node the HIDAPI driver opens. Note this needs the pad
+detached from Steam on the host, since usbipd passthrough is exclusive. Grant
+non-root access to the node with a udev rule matching VID `28de`, or run the
+client as root for a quick check. The kernel `hid-steam` driver is *not*
+required for this path — the HIDAPI driver decodes Valve's HID protocol itself.
+
+[usbipd]: https://github.com/dorssel/usbipd-win
+
 ## Trying it out
 
 Build the client (see the top-level build docs), plug in a controller per human
