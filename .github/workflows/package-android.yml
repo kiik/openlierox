@@ -1,11 +1,11 @@
 name: Build Android
 
 on:
-  # PRs build only Linux and WASM to keep CI light. This platform builds on
-  # develop pushes and on demand via workflow_dispatch, so a dev can run it on
-  # a branch when they need the artifact.
-  push:
-    branches: [develop]
+  # The Android build is disabled on develop pushes for now: it needs the
+  # release-signing secrets (ANDROID_KEYSTORE_* etc.), which aren't available
+  # on this fork, so every develop run fails at the signing step. It still runs
+  # on demand via workflow_dispatch and as part of the master release
+  # (workflow_call), where the secrets are present.
   workflow_dispatch:
   # Reusable: invoked by release-beta.yml on merges to master.
   workflow_call:
