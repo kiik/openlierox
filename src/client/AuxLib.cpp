@@ -135,6 +135,17 @@ bool InitializeAuxLib()
 	}
 
 	if(bJoystickSupport) {
+		// The Steam Controller does not emit standard gamepad HID on its own:
+		// left to itself it stays in "lizard mode", emulating a keyboard and
+		// mouse, so the game never sees a gamepad. Enabling SDL's built-in
+		// HIDAPI Steam driver lets SDL claim the device directly, switch off
+		// lizard mode, and present it as an ordinary game controller — without
+		// requiring Steam to be running. It only affects Valve pads; other
+		// controllers are untouched. The guard keeps it compiling against SDL2
+		// builds predating the hint.
+#ifdef SDL_HINT_JOYSTICK_HIDAPI_STEAM
+		SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_STEAM, "1");
+#endif
 		if(SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) != 0) {
 			warnings << "WARNING: couldn't init gamecontroller/joystick subystem: " << SDL_GetError() << endl;
 			bJoystickSupport = false;
