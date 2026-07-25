@@ -1,7 +1,12 @@
 name: Build Mac
 
 on:
-  pull_request:
+  # PRs build only Linux and WASM to keep CI light. This platform builds on
+  # develop pushes and on demand via workflow_dispatch, so a dev can run it on
+  # a branch when they need the artifact.
+  push:
+    branches: [develop]
+  workflow_dispatch:
   # Reusable: invoked by release-beta.yml on merges to master.
   workflow_call:
 
