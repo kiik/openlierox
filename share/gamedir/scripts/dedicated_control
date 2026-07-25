@@ -1,15 +1,24 @@
-#!/usr/bin/python -u
+#!/usr/bin/env python3
 
 # Dedicated Control handler script for OpenLieroX
 # (http://openlierox.sourceforge.net)
 
 import os, sys, time
 
+# OLX drives this script over a stdin/stdout pipe: it reads a command line from
+# us, then replies. With a pipe, Python block-buffers stdout by default, which
+# would deadlock the protocol. Line-buffer stdout so every command flushes on
+# its newline (replaces the old "python -u" shebang, which env cannot pass on).
+try:
+	sys.stdout.reconfigure(line_buffering=True)
+except AttributeError:
+	pass
+
 # Print Python script errors to external file -
 # on Windows it cannot print errors to console
 # We should start logging as soon as possible, or we won't get errors about invalid config file
 if sys.platform == "win32":
-	sys.stderr = open("dedicated_control_errors.log", "w", 0)
+	sys.stderr = open("dedicated_control_errors.log", "w", buffering=1)
 
 # Add current dir to module search path
 sys.path.append( os.getcwd() )

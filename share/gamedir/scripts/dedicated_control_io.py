@@ -33,7 +33,10 @@ def getResponse():
 
 
 def SendCommand(cmd):
-	print cmd
+	# The OLX C++ side reads this line then waits for our response, so the
+	# pipe deadlocks unless stdout is flushed immediately after every command.
+	print(cmd)
+	sys.stdout.flush()
 	return getResponse()
 
 def getSignal():
