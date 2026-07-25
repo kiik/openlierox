@@ -1,4 +1,6 @@
 
+import functools
+
 import dedicated_control_io as io
 
 def ParseRank(useRatios = True):
@@ -18,16 +20,16 @@ def ParseRank(useRatios = True):
                         continue
                 ( date, deader, killer ) = l.split("\t")
 
-		killerOk = killer != "OpenLieroXor"
+                killerOk = killer != "OpenLieroXor"
                 if not killer in killers.keys() and killerOk:
                         killers[killer] = []
                 if not deader in deaders.keys():
                         deaders[deader] = []
-		if killerOk: killers[killer].append(deader)
+                if killerOk: killers[killer].append(deader)
                 deaders[deader].append(killer)
                 l = f.readline()
         f.close()
-        sorted = killers.keys()
+        sorted = list(killers.keys())
         def sortFunc(s1, s2):
                 suicides1 = killers[s1].count(s1)
                 suicides2 = killers[s2].count(s2)
@@ -49,7 +51,7 @@ def ParseRank(useRatios = True):
                 if deaths1 < deaths2: return -1
                 if deaths1 > deaths2: return 1
                 return 0
-        sorted.sort(cmp=sortFunc)
+        sorted.sort(key=functools.cmp_to_key(sortFunc))
         rank = 0
         total = {}
         for k in sorted:
@@ -86,8 +88,8 @@ def firstRank(wormid):
             pass
 
 def rankSingle(wormName, wormid):
-	k = wormName
-	io.privateMsg(wormid, str(rank[k][3]) + ") " + k + " (" + str(rank[k][0]) + " kills, " + str(rank[k][1]) + " deaths, " + str(rank[k][2]) + " suicides)")
+        k = wormName
+        io.privateMsg(wormid, str(rank[k][3]) + ") " + k + " (" + str(rank[k][0]) + " kills, " + str(rank[k][1]) + " deaths, " + str(rank[k][2]) + " suicides)")
 
 def myRank(wormName, wormid):
         global rank
@@ -99,7 +101,7 @@ def myRank(wormName, wormid):
                         rankNames[ rank[k][3] - rankPos + 2 ] = k
                 for k in rankNames:
                     if k:
-			rankSingle(k, wormid)
+                        rankSingle(k, wormid)
         except KeyError:
                 io.privateMsg(wormid, wormName + " has not played yet")
 
@@ -118,8 +120,8 @@ def refreshRank(useRatios = True):
                 if deaths1 < deaths2: return -1
                 if deaths1 > deaths2: return 1
                 return 0
-        sorted=rank.keys()
-        sorted.sort(cmp=sortFunc)
+        sorted=list(rank.keys())
+        sorted.sort(key=functools.cmp_to_key(sortFunc))
         oldrank = rank
         rank = {}
         count = 0
