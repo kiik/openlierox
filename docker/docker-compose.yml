@@ -1,0 +1,37 @@
+# Declarative single-server OpenLieroX dedicated setup.
+#
+#   cp docker/.env.example docker/.env      # then edit docker/.env
+#   docker compose -f docker/docker-compose.yml up -d
+#
+# Server settings come from docker/.env (see docker/.env.example). The game
+# port is published as UDP; OLX_PORT drives both the in-container port and the
+# published host port, so change it in one place. State (logs, ranking,
+# players.dat) lives on the named volume and survives a restart.
+#
+# Run several games at once by starting more stacks with distinct project
+# names, env files and ports, e.g.
+#   docker compose -p olx-b --env-file docker/.env.b -f docker/docker-compose.yml up -d
+#
+# For a Docker Swarm / Portainer deployment, use docker/olx.stack.yml instead.
+version: "3.8"
+
+services:
+  olx-dedicated:
+    image: openlierox-dedicated
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      # .git is excluded from the build context, so the version falls back to
+      # this build arg. Set OLX_VERSION in .env for a real release string.
+      args:
+        OLX_VERSION: ${OLX_VERSION:-0.0-docker}
+    env_file:
+      - .env
+    ports:
+      - "${OLX_PORT:-23400}:${OLX_PORT:-23400}/udp"
+    volumes:
+      - olx-data:/data
+    restart: unless-stopped
+
+volumes:
+  olx-data:
