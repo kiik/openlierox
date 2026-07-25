@@ -362,7 +362,14 @@ CHttpDownloadManager::CHttpDownloadManager()
 	// Create the thread
 	bBreakThread = false;
 	tMutex = SDL_CreateMutex();
+#ifndef __EMSCRIPTEN__
 	tThread = threadPool->start(&ManagerMain, (void *)this, "CHttpDownloadManager helper");
+#else
+	// Single-threaded browser build: ManagerMain loops forever, which would
+	// hang the cooperative pump. Browsers can't fetch mods over UDP/HTTP the
+	// way this manager expects anyway, and local single-player needs no
+	// downloads, so leave the manager threadless (downloads are inert).
+#endif
 }
 
 ///////////////

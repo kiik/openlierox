@@ -5,17 +5,12 @@
 # resulting artefacts into <repo>/distrib/openlierox-wasm/, ready to
 # upload to a static web host.
 #
-# The bundle requires the host to send COOP/COEP headers (the wasm
-# build uses -pthread / SharedArrayBuffer). Three flavours of config
-# ship in the bundle:
-#   _headers              — Netlify / Cloudflare Pages
-#   .htaccess             — Apache
-#   coi-serviceworker.js  — fallback for hosts that can't set headers
-#                           (notably GitHub Pages); registers a
-#                           service worker that re-injects the
-#                           Cross-Origin-* headers client-side.
-# Other hosts (nginx, S3+CloudFront, ...) should set the same three
-# headers natively if possible.
+# This is a SINGLE-THREADED wasm build: no pthreads, no SharedArrayBuffer,
+# and therefore NO cross-origin isolation. The bundle is plain static
+# files and runs on any static host (GitHub Pages, Netlify, S3, nginx,
+# `python3 -m http.server`, ...) with no special response headers and no
+# service-worker shim. A minimal .htaccess is shipped only to set the
+# .wasm MIME type on Apache.
 #
 # Usage: ./build.sh [--debug] [extra args forwarded to build-wasm.sh]
 
@@ -63,31 +58,14 @@ cp -f "$OUT_DIR/openlierox.js"   "$DIST_DIR/openlierox.js"
 cp -f "$OUT_DIR/openlierox.wasm" "$DIST_DIR/openlierox.wasm"
 cp -f "$OUT_DIR/openlierox.data" "$DIST_DIR/openlierox.data"
 
-# Cross-origin-isolation service-worker shim. Required for hosts
-# that can't set COOP/COEP response headers (GitHub Pages). Harmless
-# on hosts that do set the headers — the shim notices
-# `crossOriginIsolated === true` and exits without registering.
-SHIM_SRC="$WASM_DIR/shell/coi-serviceworker.js"
-if [ ! -f "$SHIM_SRC" ]; then
-    echo "ERROR: coi-serviceworker shim missing at $SHIM_SRC" >&2
-    exit 1
-fi
-cp -f "$SHIM_SRC" "$DIST_DIR/coi-serviceworker.js"
-[ -f "$WASM_DIR/shell/coi-serviceworker.LICENSE" ] && \
-    cp -f "$WASM_DIR/shell/coi-serviceworker.LICENSE" \
-          "$DIST_DIR/coi-serviceworker.LICENSE"
-
-# Local-testing launcher.
-# serve.py sets the COOP/COEP headers the threaded build needs;
-# a plain `python3 -m http.server` doesn't,
-# and the engine then hangs at startup with SharedArrayBuffer unavailable.
-# run.command is a double-clickable macOS wrapper
-# that serves the bundle and opens a browser.
+# Local-testing launcher. serve.py is just a convenience static server
+# (adds the .wasm MIME type + no-cache); a plain `python3 -m http.server`
+# works too, since this single-threaded build needs no special headers.
+# run.command is a double-clickable macOS wrapper.
 cp -f "$WASM_DIR/serve.py" "$DIST_DIR/serve.py"
 cat > "$DIST_DIR/run.command" <<'EOF'
 #!/bin/sh
-# Double-click (macOS) to serve this OpenLieroX bundle locally
-# with the COOP/COEP headers the WebAssembly build requires,
+# Double-click (macOS) to serve this OpenLieroX bundle locally,
 # then open it in a browser.
 cd "$(dirname "$0")" || exit 1
 ( sleep 1 && open "http://localhost:8000/" ) &
@@ -108,42 +86,8 @@ for asset in manifest.webmanifest icon-256.png icon-512.png; do
     cp -f "$WASM_DIR/shell/$asset" "$DIST_DIR/$asset"
 done
 
-# Inject the shim's <script> into the staged index.html, immediately
-# before </head>, so it registers before the emscripten loader runs.
-# The shim must be loaded as a regular script (no defer / async /
-# type=module) because it relies on document.currentScript.src to
-# self-register as the service worker.
-python3 - "$DIST_DIR/index.html" <<'PY'
-import sys, pathlib
-p = pathlib.Path(sys.argv[1])
-html = p.read_text()
-tag = '  <script src="coi-serviceworker.js"></script>\n'
-if tag.strip() in html:
-    sys.exit(0)
-needle = "</head>"
-i = html.find(needle)
-if i == -1:
-    sys.stderr.write(f"ERROR: no </head> in {p}\n")
-    sys.exit(1)
-p.write_text(html[:i] + tag + html[i:])
-PY
-
-# Netlify / Cloudflare Pages headers config.
-cat > "$DIST_DIR/_headers" <<'EOF'
-/*
-  Cross-Origin-Opener-Policy: same-origin
-  Cross-Origin-Embedder-Policy: require-corp
-  Cross-Origin-Resource-Policy: same-origin
-EOF
-
-# Apache headers + correct MIME types.
+# Apache MIME types (the single-threaded build needs no COOP/COEP headers).
 cat > "$DIST_DIR/.htaccess" <<'EOF'
-<IfModule mod_headers.c>
-    Header set Cross-Origin-Opener-Policy   "same-origin"
-    Header set Cross-Origin-Embedder-Policy "require-corp"
-    Header set Cross-Origin-Resource-Policy "same-origin"
-</IfModule>
-
 AddType application/wasm         .wasm
 AddType application/octet-stream .data
 AddType application/javascript   .js
@@ -172,9 +116,8 @@ json.dump({
     "engineFiles": ["openlierox.js", "openlierox.wasm", "openlierox.data"],
     "files": [
         "index.html", "openlierox.js", "openlierox.wasm", "openlierox.data",
-        "coi-serviceworker.js", "coi-serviceworker.LICENSE",
         "manifest.webmanifest", "icon-256.png", "icon-512.png",
-        "_headers", ".htaccess", "serve.py", "run.command",
+        ".htaccess", "serve.py", "run.command",
     ],
 }, open(sys.argv[1], "w"), indent=2)
 open(sys.argv[1], "a").write("\n")
@@ -188,19 +131,14 @@ ls -lh "$DIST_DIR"
 TOTAL=$(du -sh "$DIST_DIR" | cut -f1)
 echo
 echo "Total size: $TOTAL"
-echo "Upload the contents of $DIST_DIR to your web host."
+echo "Upload the contents of $DIST_DIR to any static web host."
 echo
-echo "Cross-origin isolation (required for SharedArrayBuffer/pthread):"
-echo "  - Hosts with header config: covered by _headers (Netlify / CF Pages)"
-echo "    and .htaccess (Apache); set the same headers natively elsewhere:"
-echo "      Cross-Origin-Opener-Policy:   same-origin"
-echo "      Cross-Origin-Embedder-Policy: require-corp"
-echo "      Cross-Origin-Resource-Policy: same-origin"
-echo "  - Hosts without header config (GitHub Pages): coi-serviceworker.js"
-echo "    is wired into index.html and provides the headers client-side."
-echo "    First load triggers a one-time reload to activate the worker."
+echo "This single-threaded build needs no COOP/COEP headers and no service"
+echo "worker — plain static hosting works (GitHub Pages, Netlify, S3, nginx)."
+echo "The only requirement is that .wasm is served as application/wasm"
+echo "(most hosts do this already; .htaccess covers Apache)."
 echo
 echo "To test the bundle locally, run 'python3 serve.py' inside it"
-echo "(or double-click run.command on macOS),"
+echo "(or 'python3 -m http.server', or double-click run.command on macOS),"
 echo "then open http://localhost:8000/."
-echo "Opening index.html as a file:// URL will not work."
+echo "Opening index.html as a file:// URL will not work (must be served over HTTP)."

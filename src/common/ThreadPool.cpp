@@ -10,11 +10,43 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <list>
 #include "ThreadPool.h"
 #include "Debug.h"
 #include "AuxLib.h"
 #include "OLXCommand.h"
 #include "util/macros.h"
+
+
+#ifdef __EMSCRIPTEN__
+// Single-threaded browser build: the ThreadPool has no worker threads.
+// start() enqueues the action here and hands back an unfinished handle;
+// the actions run cooperatively, either from the per-frame pump
+// (pumpEmscripten) or from inside wait()/waitAll() when something blocks
+// on a task. Only *finite* actions may reach here — looping thread bodies
+// (game loop, timers, socket readers, AI, the task-queue and download
+// manager threads) are converted to cooperative ticks or guarded out at
+// their call sites, so the pump never runs an endless handle().
+namespace {
+	struct EmPending {
+		SmartPointer<ThreadPoolItem> task;
+		Action* action;
+	};
+	std::list<EmPending> g_emPending;
+
+	// Run the oldest pending action, if any. Returns false when none left.
+	bool emRunOnePending() {
+		if(g_emPending.empty()) return false;
+		EmPending p = g_emPending.front();
+		g_emPending.pop_front();
+		int ret = p.action->handle();
+		delete p.action;
+		p.task->ret = ret;
+		p.task->finished = true;
+		return true;
+	}
+}
+#endif
 
 
 static bool isThreadIdValid(ThreadId id) {
@@ -152,6 +184,17 @@ void ThreadPool::threadWrapper(ThreadWorker* w) {
 }
 
 SmartPointer<ThreadPoolItem> ThreadPool::start(Action* act, const std::string& name) {
+#ifdef __EMSCRIPTEN__
+	// No worker threads: defer the action, run it later (see the file-top
+	// note). Returning immediately means callers can safely start() while
+	// holding a lock the action also takes — the action runs after the
+	// lock is released, not inline here.
+	SmartPointer<ThreadPoolItem> task = new ThreadPoolItem();
+	task->name = name;
+	EmPending p; p.task = task; p.action = act;
+	g_emPending.push_back(p);
+	return task;
+#else
 	std::lock_guard<std::mutex> startLock(startMutex); // serialize start() so nextAction/nextTask are not clobbered
 	std::unique_lock<std::mutex> lock(mutex);
 	if(availableThreads.size() == 0) {
@@ -170,6 +213,7 @@ SmartPointer<ThreadPoolItem> ThreadPool::start(Action* act, const std::string& n
 	while(nextAction != NULL) threadStartedWork.wait(lock); // wait until a worker took it
 	nextTask = NULL;
 	return task;
+#endif
 }
 
 SmartPointer<ThreadPoolItem> ThreadPool::start(ThreadFunc fct, void* param, const std::string& name) {
@@ -195,13 +239,34 @@ SmartPointer<ThreadPoolItem> ThreadPool::start(std::function<Result()> fct, cons
 
 bool ThreadPool::wait(const SmartPointer<ThreadPoolItem>& item, int* status) {
 	if(!item.get()) return false;
+#ifdef __EMSCRIPTEN__
+	// Run pending actions until the awaited task is done. Stop early if the
+	// queue drains without finishing it (e.g. the task was guarded out and
+	// never enqueued) so we never spin forever.
+	while(!item->finished && emRunOnePending()) {}
+	if(status) *status = item->ret;
+	return item->finished;
+#else
 	std::unique_lock<std::mutex> lock(mutex);
 	while(!item->finished) taskFinished.wait(lock);
 	if(status) *status = item->ret;
 	return true;
+#endif
 }
 
+#ifdef __EMSCRIPTEN__
+void ThreadPool::pumpEmscripten() {
+	// Drain all currently-pending actions. An action may enqueue more, so
+	// loop until the queue is fully empty.
+	while(emRunOnePending()) {}
+}
+#endif
+
 bool ThreadPool::waitAll() {
+#ifdef __EMSCRIPTEN__
+	while(emRunOnePending()) {}
+	return true;
+#else
 	std::unique_lock<std::mutex> lock(mutex);
 	while(usedThreads.size() > 0) {
 		warnings << "ThreadPool: waiting for " << usedThreads.size() << " task(s) to finish:" << endl;
@@ -213,6 +278,7 @@ bool ThreadPool::waitAll() {
 	}
 
 	return true;
+#endif
 }
 
 void ThreadPool::dumpState(CmdLineIntf& cli) const {

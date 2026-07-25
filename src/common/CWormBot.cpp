@@ -517,16 +517,22 @@ public:
 		thread_is_ready(true),
 		break_thread_signal(0),
 		restart_thread_searching_signal(0) {
+#ifndef __EMSCRIPTEN__
 		thread = threadPool->start(threadSearch, this, "AI worm pathfinding");
 		if(!thread.get())
 			errors << "could not create AI thread" << endl;
+#endif
+		// Single-threaded browser build: no search thread; searches run
+		// synchronously at request time (see runPendingSearchEmscripten).
 	}
 
 	~searchpath_base() {
 		// thread cleaning up
 		breakThreadSignal();
+#ifndef __EMSCRIPTEN__
 		if(thread.get()) threadPool->wait(thread, NULL);
 		else warnings << "AI thread already uninitialized" << endl;
+#endif
 		thread = NULL;
 		
 		clear();
@@ -691,6 +697,9 @@ public:
 
 		// this is the signal to start the search
 		setReady(false);
+#ifdef __EMSCRIPTEN__
+		runPendingSearchEmscripten();
+#endif
 		return true;
 	}
 
@@ -742,7 +751,41 @@ private:
 		return "should not happen";
 	}
 
-	
+#ifdef __EMSCRIPTEN__
+public:
+	// Single-threaded browser build: run the pathfinding synchronously in
+	// place of the background thread. Mirrors threadSearch's loop body
+	// (including the restart-signal re-search), so callers that poll
+	// isReady()/resultedPath() see a completed result right away.
+	// NOTE: this runs the whole search inline, which can cause a frame
+	// hitch on large maps; time-slicing would be the follow-up if needed.
+	void runPendingSearchEmscripten() {
+		while(!isReady()) {
+			if(shouldBreakThread()) return;
+
+			resulted_path = NULL;
+			clear();
+
+			NEW_ai_node_t* ret = findPath(start);
+			completeNodesInfo(ret);
+			simplifyPath(ret);
+			splitUpNodes(ret, NULL);
+			resulted_path = ret;
+
+			if(shouldRestartThread()) {
+				Mutex::ScopedLock lock(mutex);
+				restart_thread_searching_signal = 0;
+				start = restart_thread_searching_newdata.start;
+				target = restart_thread_searching_newdata.target;
+				continue;
+			}
+
+			setReady(true);
+		}
+	}
+private:
+#endif
+
 	// HINT: threadSearch is the only function, who should set this to true again!
 	// a set to false means for threadSearch, that it should start the search now
 	void setReady(bool state) {
@@ -762,13 +805,20 @@ public:
 	}
 
 	void restartThreadSearch(VectorD2<int> newstart, VectorD2<int> newtarget) {
-		// set signal
-		Mutex::ScopedLock lock(mutex);
-		thread_is_ready = false;
-		restart_thread_searching_newdata.start = newstart;
-		restart_thread_searching_newdata.target = newtarget;
-		// HINT: the reading of this isn't synchronized
-		restart_thread_searching_signal = 1;
+		{
+			// set signal
+			Mutex::ScopedLock lock(mutex);
+			thread_is_ready = false;
+			restart_thread_searching_newdata.start = newstart;
+			restart_thread_searching_newdata.target = newtarget;
+			// HINT: the reading of this isn't synchronized
+			restart_thread_searching_signal = 1;
+		}
+#ifdef __EMSCRIPTEN__
+		// Run the search now (lock released above; the mutex is not
+		// recursive and runPendingSearchEmscripten re-locks it).
+		runPendingSearchEmscripten();
+#endif
 	}
 
 private:

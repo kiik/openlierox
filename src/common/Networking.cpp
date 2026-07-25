@@ -18,6 +18,7 @@
 #include <string.h>
 #include <errno.h>
 #include <atomic>
+#include <list>
 
 #include <curl/curl.h>
 
@@ -575,7 +576,14 @@ struct NetworkSocket::EventHandler {
 		~SharedData() { nlGroupDestroy(nlGroup); nlGroup = NL_INVALID; }
 	};
 	SmartPointer<SharedData> sharedData;
-	
+
+#ifdef __EMSCRIPTEN__
+	// Single-threaded browser build: all live event handlers, polled once
+	// per frame by tickAll() instead of each running its own two threads.
+	static std::list< SmartPointer<SharedData> > s_active;
+	static void tickAll();
+#endif
+
 	EventHandler(NetworkSocket* sock);
 	
 	void quit() {
@@ -677,9 +685,51 @@ NetworkSocket::EventHandler::EventHandler(NetworkSocket* sock) {
 	};
 	
 	sharedData = new SharedData(sock);
+#ifdef __EMSCRIPTEN__
+	// No reader threads; register for cooperative per-frame polling. The
+	// EventHandlerThread above is left unused (never instantiated) here.
+	s_active.push_back(sharedData);
+#else
 	threadPool->start(new EventHandlerThread(sharedData, NL_READ_STATUS), "socket " + itoa(sock->m_socket->sock) + " read event checker");
 	threadPool->start(new EventHandlerThread(sharedData, NL_ERROR_STATUS), "socket " + itoa(sock->m_socket->sock) + " error event checker");
+#endif
 }
+
+#ifdef __EMSCRIPTEN__
+std::list< SmartPointer<NetworkSocket::EventHandler::SharedData> > NetworkSocket::EventHandler::s_active;
+
+// Cooperative replacement for the two per-socket reader threads. Polls
+// every live socket group non-blocking (timeout 0) and pushes the same
+// OnNewData / OnError events the threads would have. Dead handlers
+// (quit()'d or with a detached socket) are dropped.
+void NetworkSocket::EventHandler::tickAll() {
+	for(std::list< SmartPointer<SharedData> >::iterator it = s_active.begin(); it != s_active.end(); ) {
+		SmartPointer<SharedData> data = *it;
+
+		bool dead = data->quitSignal;
+		if(!dead) {
+			Mutex::ScopedLock lock(data->mutex);
+			if(!data->sock) dead = true;
+		}
+		if(dead) { it = s_active.erase(it); continue; }
+
+		NLsocket s;
+		if(nlPollGroup(data->nlGroup, NL_READ_STATUS, &s, 1, 0) > 0) {
+			Mutex::ScopedLock lock(data->mutex);
+			if(data->sock) data->sock->OnNewData.pushToMainQueue(EventData(data->sock));
+		}
+		if(nlPollGroup(data->nlGroup, NL_ERROR_STATUS, &s, 1, 0) > 0) {
+			Mutex::ScopedLock lock(data->mutex);
+			if(data->sock) data->sock->OnError.pushToMainQueue(EventData(data->sock));
+		}
+		++it;
+	}
+}
+
+void NetworkSocket::tickEventHandlersEmscripten() {
+	EventHandler::tickAll();
+}
+#endif
 
 NetworkSocket::NetworkSocket() : m_type(NST_INVALID), m_state(NSS_NONE), m_withEvents(false), m_socket(NULL) {
 	m_socket = new InternSocket();

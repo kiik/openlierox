@@ -27,7 +27,7 @@
     html, body { margin: 0; padding: 0; height: 100%; background: #111; color: #ddd;
                  font-family: system-ui, sans-serif; overflow: hidden; }
     #wrapper   { display: flex; flex-direction: column; height: 100%;
-                 align-items: center; }
+                 align-items: stretch; }
     /* Loading/status text overlaid centred ON TOP of the canvas. It lives
      * inside #fs-area (which is what goes fullscreen), so it stays visible over
      * the game even in fullscreen — the browser's fullscreen top layer hides
@@ -43,29 +43,31 @@
                       padding: 4px 10px; font: 12px system-ui, sans-serif;
                       cursor: pointer; border-radius: 3px; }
     #toolbar button:hover { background: #3a3a3a; }
-    /* Lock the canvas to OLX's native resolution. Letting it stretch
-     * makes mouse coordinates ambiguous (DOM vs SDL pixel space) and
-     * also softens the pixel-art assets. */
-    #canvas    { width: 640px; height: 480px; display: block;
-                 background: #000; outline: none; image-rendering: pixelated; }
+    /* Scale the canvas to fill the available area while preserving OLX's 4:3
+     * aspect (no black bars beyond letterboxing, no distortion). The canvas
+     * ELEMENT box is kept equal to the displayed content (via aspect-ratio,
+     * not object-fit) so Emscripten's rect-based mouse mapping stays exact.
+     * The backing store is supersampled (see initWindow in AuxLib.cpp) and
+     * sharp-scaled, so this CSS downscale stays crisp rather than blocky. */
+    #canvas    { display: block; background: #000; outline: none;
+                 image-rendering: auto;
+                 height: 100%; width: auto; aspect-ratio: 4 / 3;
+                 max-width: 100%; max-height: 100%; }
     /* The canvas + the status overlay live in #fs-area, and IT is what goes
      * fullscreen (not the canvas directly) so the overlay can sit on top in the
-     * browser's fullscreen top layer. Windowed: it just hugs the 640x480
-     * canvas. Fullscreen: stretch the canvas to fill the whole screen. The
-     * 640x480 backing buffer is scaled to the viewport, so a wide display
-     * shows the game edge to edge (stretched to the screen's aspect) with no
-     * black bars. */
-    #fs-area   { position: relative; width: 640px; height: 480px; }
+     * browser's fullscreen top layer. Windowed: it grows to fill the page and
+     * centres the aspect-correct canvas. Fullscreen: stretch to the screen. */
+    #fs-area   { position: relative; flex: 1 1 auto; min-height: 0;
+                 display: flex; align-items: center; justify-content: center;
+                 background: #000; overflow: hidden; }
     #fs-area:fullscreen { width: 100vw; height: 100vh; background: #000; }
-    #fs-area:fullscreen #canvas { width: 100%; height: 100%; }
     /* Installed web app (iOS "Add to Home Screen" standalone / Android PWA):
-     * no browser chrome, so stretch the canvas to fill the whole screen,
-     * exactly like the in-page fullscreen mode. The toolbar/log aren't useful
-     * there, so hide them. */
+     * no browser chrome, so the game area fills the whole screen. The canvas
+     * keeps its aspect-preserving rule (centred, no distortion). The
+     * toolbar/log aren't useful there, so hide them. */
     body.standalone #toolbar, body.standalone #log { display: none; }
     body.standalone #fs-area { position: fixed; inset: 0; width: 100vw; height: 100vh;
                                background: #000; }
-    body.standalone #fs-area #canvas { width: 100%; height: 100%; }
     #log       { max-height: 25vh; overflow: auto; padding: 4px 10px;
                  background: #181818; font: 12px/1.3 monospace; white-space: pre-wrap;
                  align-self: stretch; }
@@ -235,27 +237,17 @@
     };
 
     // --- Environment preflight -------------------------------------------
-    // This is a threaded (-pthread) build:
-    // main() runs on a Web Worker,
-    // and the engine can't start without SharedArrayBuffer,
-    // which browsers only expose to cross-origin-isolated pages
-    // served over http(s) with COOP/COEP headers.
-    // Opening this page as a file:// URL, or serving it without those headers,
-    // otherwise fails with an opaque "Script error." or just hangs at "Starting…".
-    // Detect both cases up front and explain what to do.
+    // This is a SINGLE-THREADED build: no pthreads, so no SharedArrayBuffer
+    // and no cross-origin isolation (COOP/COEP) requirement — it runs from
+    // any plain static HTTP host. The one hard requirement is HTTP(S): a
+    // file:// URL can't fetch the .wasm/.data, failing with an opaque
+    // "Script error." Detect that up front and explain what to do.
     const FATAL = {
       file:
         "This WebAssembly build can’t run from a <code>file://</code> URL; " +
         "it must be served over HTTP.<br>" +
         "Use the bundled server: run <b>python3&nbsp;serve.py</b> in this folder,<br>" +
         "then open the <b>http://localhost:8000/</b> URL it prints.",
-      coi:
-        "OpenLieroX can’t start: this page is not cross-origin isolated, " +
-        "so <b>SharedArrayBuffer</b> (required by the threaded build) is unavailable.<br>" +
-        "Serve it with the COOP/COEP headers; " +
-        "the bundled <b>python3&nbsp;serve.py</b> sets them for you.<br>" +
-        "(A plain <code>http.server</code> only works " +
-        "if <code>coi-serviceworker.js</code> is present and can register.)",
       script:
         "OpenLieroX failed to load its engine files.<br>" +
         "If you opened this as a <code>file://</code> URL, " +
@@ -270,16 +262,6 @@
 
     if (location.protocol === "file:") {
       showFatal("file");
-    } else if (!self.crossOriginIsolated) {
-      // Not isolated yet.
-      // The bundled coi-serviceworker.js shim can fix this on a header-less host,
-      // but only via a one-time reload,
-      // and that navigation tears down this timer.
-      // If we're still here and un-isolated after it's had time to act,
-      // isolation isn't coming: say so instead of hanging at "Starting…".
-      setTimeout(() => {
-        if (!self.crossOriginIsolated && !preflightFailed) showFatal("coi");
-      }, 5000);
     }
 
     Module.setStatus("Downloading…");

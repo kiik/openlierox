@@ -1,5 +1,8 @@
 #include <SDL.h>
 #include <setjmp.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include "MainLoop.h"
 #include "Mutex.h"
@@ -13,6 +16,7 @@
 #include "InputEvents.h"
 #include "TaskManager.h"
 #include "Timer.h"
+#include "Networking.h"
 #include "DeprecatedGUI/Menu.h"
 #include "CServer.h"
 #include "IRC.h"
@@ -356,9 +360,21 @@ bool handleSDLEvents(bool wait) {
 
 void doMainLoop() {
 #ifdef SINGLETHREADED
+	// Single-threaded build (desktop --singlethread and the browser). On
+	// Emscripten this is *not* driven by emscripten_set_main_loop: the browser
+	// owns the event loop, but ASYNCIFY lets us keep a plain blocking loop and
+	// still be a good citizen — CapFPS() at the end of every frame calls
+	// emscripten_sleep(), which unwinds to the browser (so it paints and
+	// delivers input) and resumes on the next tick. Nested modal loops
+	// (Menu_MessageBox, the map editor, ...) go through the same CapFPS() yield,
+	// so they no longer freeze the tab. Crucially this loop still *returns* when
+	// the game quits, which the restart-after-quit path in main() relies on —
+	// e.g. changing the GUI theme sets S_Quit + bRestartGameAfterQuit and
+	// expects doMainLoop() to return so main() can re-init. With
+	// emscripten_set_main_loop + simulate_infinite_loop that return never
+	// happened and the tab hung on a theme change.
 	MainLoopTask mainLoop;
 	while(true) {
-		// we handle SDL events in doVideoFrameInMainThread
 		if(NegResult r = mainLoop.handleFrame())
 			break;
 	}
@@ -465,6 +481,17 @@ Result MainLoopTask::handle_Loop() {
 		state = State_Quit;
 		return true;
 	}
+
+#ifdef __EMSCRIPTEN__
+	// Single-threaded browser build: run everything that would otherwise
+	// live on a worker thread. Deferred pool actions first (skin loads,
+	// queued tasks, ...), then per-timer and per-socket work. The events
+	// they raise are drained by ProcessEvents() inside game.frame() below,
+	// same frame.
+	if(threadPool) threadPool->pumpEmscripten();
+	TimerSystem_tickEmscripten();
+	NetworkSocket::tickEventHandlersEmscripten();
+#endif
 
 	game.frame();
 	return true;

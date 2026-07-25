@@ -129,6 +129,13 @@ public:
 
 	bool withEvents() const { return m_withEvents; }
 	void setWithEvents(bool v);
+
+#ifdef __EMSCRIPTEN__
+	// Single-threaded browser build: poll every event-driven socket once
+	// per frame from the main loop, instead of running two reader threads
+	// per socket. No-op if no event-driven sockets are open.
+	static void tickEventHandlersEmscripten();
+#endif
 	Event<> OnNewData;
 	Event<> OnError;
 	

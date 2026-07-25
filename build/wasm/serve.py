@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """Tiny static server for the OpenLieroX Wasm build.
 
-Serves the bundle on http://localhost:8000 with:
-- Correct MIME types for .wasm / .data / .js
-- Cross-Origin-Opener-Policy / Cross-Origin-Embedder-Policy headers,
-  required by the -pthread build (SharedArrayBuffer).
+Serves the bundle on http://localhost:8000 with correct MIME types for
+.wasm / .data / .js. This is a SINGLE-THREADED build: it needs no
+SharedArrayBuffer and therefore no cross-origin isolation, so any plain
+static host works (`python3 -m http.server` is enough) — this script just
+adds the wasm MIME type and a no-cache policy for convenient iteration.
 
 Serves build/wasm/output/ when run from the repo,
 or the directory it sits in when shipped inside a distributed bundle
 (next to index.html).
 Set OLX_WASM_ROOT to serve a different directory.
 
-Optional TLS, for testing on a phone over the LAN: SharedArrayBuffer
-needs a *secure context*, which over a LAN IP means HTTPS (localhost is
-exempt, a bare LAN IP is not). Set CERTFILE (and optionally KEYFILE) to
-serve https:// instead. Example:
+Optional TLS, for testing on a phone over the LAN (some browser features
+want a secure context over a bare LAN IP; localhost is exempt). Set
+CERTFILE (and optionally KEYFILE) to serve https:// instead. Example:
 
     CERTFILE=/tmp/olx-tls/cert.pem KEYFILE=/tmp/olx-tls/key.pem \\
         PORT=8443 python3 serve.py
@@ -50,9 +50,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     })
 
     def end_headers(self):
-        self.send_header("Cross-Origin-Opener-Policy",   "same-origin")
-        self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
-        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         # Aggressive no-cache so phones don't keep serving a stale build while
         # iterating. no-store alone isn't always honoured by mobile browsers;
         # pair it with no-cache/must-revalidate + the legacy Pragma/Expires.

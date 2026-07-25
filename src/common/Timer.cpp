@@ -135,6 +135,18 @@ static void InitTimerSystem() {
 struct TimerData;
 static void RemoveTimerFromGlobalList(TimerData *data);
 
+#ifdef __EMSCRIPTEN__
+// Single-threaded browser build: instead of one background thread per
+// timer, every active timer is registered here and ticked cooperatively
+// once per frame from the main loop (see TimerSystem_tickEmscripten).
+static std::list<TimerData*> g_activeTimers;
+static void em_removeActiveTimer(TimerData* d) {
+	for(std::list<TimerData*>::iterator it = g_activeTimers.begin(); it != g_activeTimers.end(); ++it) {
+		if(*it == d) { g_activeTimers.erase(it); return; }
+	}
+}
+#endif
+
 
 // Timer data, contains almost the same info as the timer class
 struct TimerData {
@@ -148,7 +160,10 @@ struct TimerData {
 	SDL_cond*			quitCond;
 	SDL_mutex*			mutex;
 	SmartPointer<ThreadPoolItem>	thread;
-	
+#ifdef __EMSCRIPTEN__
+	AbsTime				nextFire; // next time this cooperative timer should fire
+#endif
+
 	TimerData() : timer(NULL), userData(NULL), interval(0), once(false), quitSignal(false), quitCond(NULL), mutex(NULL), thread(NULL) {
 		mutex = SDL_CreateMutex();
 		quitCond = SDL_CreateCond();
@@ -157,6 +172,11 @@ struct TimerData {
 	}
 	~TimerData() {
 		breakThread();
+#ifdef __EMSCRIPTEN__
+		// No timer thread on the single-threaded browser build; just
+		// drop it from the cooperative tick list.
+		em_removeActiveTimer(this);
+#endif
 		if(thread.get()) threadPool->wait(thread, NULL);
 		thread = NULL;
 		SDL_DestroyMutex(mutex); mutex = NULL;
@@ -172,7 +192,15 @@ struct TimerData {
 
 	void startThread() {
 		assert(thread.get() == NULL);
-		
+
+#ifdef __EMSCRIPTEN__
+		// Single-threaded browser build: no thread. Register for
+		// cooperative per-frame ticking instead.
+		nextFire = GetTime() + TimeDiff((Uint64)interval);
+		g_activeTimers.push_back(this);
+		return;
+#endif
+
 		struct TimerHandler : Action {
 			TimerData* data;
 			
@@ -203,8 +231,40 @@ struct TimerData {
 		
 		thread = threadPool->start(new TimerHandler(this), name + " timer");
 	}
-	
+
 };
+
+#ifdef __EMSCRIPTEN__
+// Cooperative replacement for the per-timer thread loop. Called once per
+// frame from the main loop; for every timer whose interval has elapsed
+// (or that has been asked to quit) it pushes the same onInternTimerSignal
+// event the thread would have, so Timer_handleEvent runs unchanged.
+void TimerSystem_tickEmscripten() {
+	if(g_activeTimers.empty()) return;
+	AbsTime now = GetTime();
+
+	// Collect due timers first: firing a timer can push an event that
+	// (via Timer_handleEvent) deletes the TimerData and mutates the list.
+	std::list<TimerData*> due;
+	for(std::list<TimerData*>::iterator it = g_activeTimers.begin(); it != g_activeTimers.end(); ++it) {
+		TimerData* d = *it;
+		if(d->quitSignal || now >= d->nextFire)
+			due.push_back(d);
+	}
+
+	for(std::list<TimerData*>::iterator it = due.begin(); it != due.end(); ++it) {
+		TimerData* d = *it;
+		bool lastEvent = d->once || d->quitSignal || game.state == Game::S_Quit;
+		if(lastEvent)
+			// Mirror the thread returning after a last event: stop ticking
+			// it now. Timer_handleEvent will delete the TimerData.
+			em_removeActiveTimer(d);
+		else
+			d->nextFire = now + TimeDiff((Uint64)d->interval);
+		onInternTimerSignal.pushToMainQueue(InternTimerEventData(d, lastEvent));
+	}
+}
+#endif
 
 // Global list that holds info about headless timers
 // Used to make sure there are no memory leaks

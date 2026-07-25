@@ -18,10 +18,13 @@ guards.
 | Area | State |
 |---|---|
 | Build pipeline | Working; idempotent re-runs |
+| Threading | Single-threaded (no pthreads / no SharedArrayBuffer) |
+| Cross-origin isolation | Not required — runs on any plain static host |
 | Boot to main menu | Clean (single intentional warning about UDP) |
 | Menu navigation (Local Play / Profiles / Options / Editor) | Working |
 | Local single-player match | Working — gameplay, kills, dirt, respawn |
 | Audio | Working (OpenAL JS port) |
+| Display scaling | Fills the viewport (aspect-preserving) + sharp scaling |
 | LAN / internet networking | Stubbed; UDP unavailable in browsers |
 | Fullscreen | Disabled by master switch (see below) |
 | Persistent user data | In-memory only (MEMFS, wiped on reload) |
@@ -67,10 +70,8 @@ build/wasm/
 │                           # redirect subprojects to emcc ports
 ├── jni/                    # alut shim (libfreealut replacement)
 ├── shell/
-│   ├── shell.html          # HTML template emcc fills in
-│   ├── coi-serviceworker.js  # vendored COI shim (MIT, gzuidhof)
-│   └── coi-serviceworker.LICENSE
-├── serve.py                # static dev server with COOP/COEP headers
+│   └── shell.html          # HTML template emcc fills in
+├── serve.py                # convenience static dev server (adds wasm MIME)
 ├── run-headless.py         # CDP-driven Chrome harness (scripted)
 ├── attach-debug.py         # CDP-driven visible-Chrome debug log
 ├── deps/                   # cloned third-party sources (gitignored)
@@ -99,9 +100,10 @@ doesn't:
 -lopenal
 ```
 
-SDL2_mixer is intentionally skipped — OLX talks to OpenAL directly,
-and the bundled SDL2_mixer port lacks a pthread variant in the emcc
-release we use, which would break `--shared-memory` linking.
+SDL2_mixer is intentionally skipped — OLX talks to OpenAL directly.
+(As a single-threaded build, the prebuilt emcc ports link cleanly;
+the pthread build could not use them, which is one more reason the
+web port is single-threaded.)
 
 **From source** (cloned into `deps/` by [fetch-dependencies.sh](fetch-dependencies.sh)):
 
@@ -120,43 +122,67 @@ The `Find{ZLIB,PNG,JPEG}.cmake` stubs in [cmake/](cmake/) are
 load-bearing: subprojects call `find_package(ZLIB|PNG|JPEG)`, which
 on Emscripten would otherwise fail (no `libz.a` to locate on disk).
 The stubs declare imported targets and set `*_LIBRARIES=""` so libgd
-doesn't append `-lz` / `-lpng` / `-ljpeg` — emcc would then pull the
-non-pthread sysroot variants and break the link.
+doesn't append `-lz` / `-lpng` / `-ljpeg` and let emcc resolve them
+from its own ports instead.
 
-## Threading model and cross-origin isolation
+## Threading model (single-threaded — no cross-origin isolation)
 
-Built with `-pthread -sPROXY_TO_PTHREAD=1 -sPTHREAD_POOL_SIZE=12`.
+This is a **single-threaded** build: no `-pthread`, no
+`PROXY_TO_PTHREAD`, no pthread pool. `main()` runs on the browser's
+main thread and the game loop stays a plain blocking `while` in
+`doMainLoop()`; it hands the thread back to the browser once per frame
+in `CapFPS()` (see the main-loop / modal-loop bullets below).
 
-- `main()` runs on a Web Worker, not the browser's main thread. Every
-  blocking call OLX makes (`SDL_WaitEvent`, `SDL_Delay`,
-  `pthread_cond_wait`, `ThreadPool::wait`) just blocks the worker —
-  the browser's main thread keeps painting and dispatching input,
-  which it proxies back to the engine worker.
-- Existing OLX code that calls `SDL_CreateThread` or stands up its
-  own pools works unchanged.
-- The 40-thread pool the engine reports at boot is OLX's own
-  `threadpool` — a `PTHREAD_POOL_SIZE=12` pre-allocation just covers
-  the steady-state long-lived threads (network, audio, asset I/O)
-  without paying worker-creation latency mid-game.
+Because there are no threads, the module needs **no `SharedArrayBuffer`**,
+and therefore **no cross-origin isolation** — no COOP/COEP headers, no
+service-worker shim, no special server config. It runs from any plain
+static host, and works in Safari Private Browsing / iOS WebViews (which
+can't run the isolated/service-worker path at all).
 
-Threads need `SharedArrayBuffer`, which browsers only expose to
-**cross-origin isolated** pages. Three response headers are required:
+OLX is heavily threaded on desktop, so the engine's threaded subsystems
+are converted to cooperative, per-frame work behind `__EMSCRIPTEN__`
+guards (desktop is unaffected):
 
-```
-Cross-Origin-Opener-Policy:   same-origin
-Cross-Origin-Embedder-Policy: require-corp
-Cross-Origin-Resource-Policy: same-origin
-```
+- **Main loop** → the per-worker blocking `while` becomes a per-frame
+  cooperative pump: `handle_Loop()` drains the ThreadPool queue and ticks
+  the timers and loopback sockets before `game.frame()`, and
+  `Game::allowedToSleepForEvent()` returns false so an idle menu never
+  blocks on `SDL_WaitEvent` ([src/MainLoop.cpp](../../src/MainLoop.cpp)).
+  The loop still **returns** when the game quits, which the
+  restart-after-quit path in `main()` relies on (e.g. a GUI theme change
+  sets `S_Quit` + `bRestartGameAfterQuit` and expects `doMainLoop()` to
+  return so `main()` can re-init).
+- **Timers** → a global list ticked once per frame instead of one
+  thread per timer ([src/common/Timer.cpp](../../src/common/Timer.cpp)).
+- **Loopback sockets** → polled non-blocking once per frame instead of
+  two reader threads per socket
+  ([src/common/Networking.cpp](../../src/common/Networking.cpp)).
+- **AI pathfinding** → runs synchronously at request time instead of on
+  a background thread ([src/common/CWormBot.cpp](../../src/common/CWormBot.cpp)).
+- **ThreadPool** → `start()` defers the action to a queue drained by a
+  per-frame pump (and by `wait()`), so no `std::thread` is ever spawned
+  ([src/common/ThreadPool.cpp](../../src/common/ThreadPool.cpp)).
+- **Infinite-loop helper threads** (the task-queue thread, the ingame
+  console handler, the HTTP download manager, the stdin CLI) are guarded
+  out and, where needed, made cooperative
+  ([TaskManager](../../src/common/TaskManager.cpp),
+  [Console](../../src/common/Console.cpp),
+  [FileDownload](../../src/common/FileDownload.cpp)).
+- **Nested modal loops** (Menu_MessageBox, the loading/connecting
+  screens, the map editor — anything that sits in a
+  `while(true){ draw; ProcessEvents(); }` until the user clicks) can't be
+  restructured into the per-frame loop, so they stay blocking but yield to
+  the browser mid-stack via **ASYNCIFY** (`-sASYNCIFY=1`). The single yield
+  chokepoint is `CapFPS()`
+  ([src/client/AuxLib.cpp](../../src/client/AuxLib.cpp)), called at the end
+  of every frame by both the top-level loop and every nested modal loop; on
+  Emscripten it calls `emscripten_sleep()` so the browser can paint the
+  frame just drawn and deliver queued input before the loop resumes. Without
+  this a message box would freeze the tab forever — nothing repaints, so its
+  OK button could never be clicked.
 
-[serve.py](serve.py) sets all three for local development.
-[build.sh](build.sh) ships the same configuration as a `_headers`
-file (Netlify / Cloudflare Pages) and `.htaccess` (Apache) inside
-the distrib bundle. For hosts that can't set custom headers
-(GitHub Pages), the bundle also includes
-[coi-serviceworker.js](shell/coi-serviceworker.js) — a small MIT
-service-worker shim that intercepts fetches and re-injects the
-headers client-side. `build.sh` injects its `<script>` tag into
-`index.html` automatically.
+The build defines `SINGLETHREADED` (so `InitThreadPool` allocates a
+pool of size 0) in addition to the `__EMSCRIPTEN__` guards above.
 
 ## Renderer
 
@@ -178,6 +204,20 @@ already exists ([src/client/AuxLib.cpp:331](../../src/client/AuxLib.cpp#L331)).
 Tearing down the SDL window/renderer mid-session destroys the canvas
 while the browser keeps dispatching mouse events into it, which
 reliably corrupts dlmalloc.
+
+### Display scaling (fill + sharpness)
+
+The SDL window (== the HTML canvas backing store) is created at a
+**supersampled** multiple of the logical 640×480 on Emscripten
+(`kWasmRenderScale`, currently 2×, in `initWindow`), and the
+sharp-scaling prescale — normally desktop-only — is enabled here too.
+So the 480p scene is rendered crisply into a 1280×960 backing, and the
+shell's CSS then scales that canvas to fill the browser viewport while
+preserving the 4:3 aspect. The canvas element box is kept equal to the
+displayed content (via CSS `aspect-ratio`, not `object-fit`) so
+Emscripten's `getBoundingClientRect`-based mouse mapping stays exact.
+Rendering at logical 640×480 and letting CSS blow up the tiny canvas
+was the previous cause of a soft/blocky picture.
 
 ### Fullscreen master switch
 
@@ -278,7 +318,6 @@ Set on the link line in [CMakeLists.txt](CMakeLists.txt):
 | `-sINITIAL_MEMORY=536870912` | 512 MB up front. OLX easily allocates that loading mods; growing memory mid-game stalls WebGL and the worker. |
 | `-sALLOW_MEMORY_GROWTH=1` | Still allow growth as a fallback. |
 | `-sSTACK_SIZE=8388608` | 8 MB main stack. OLX's call chains (Gusanos blitters, ConfigHandler, ScriptableVars setup) blow past the 64 KB default. |
-| `-sDEFAULT_PTHREAD_STACK_SIZE=4194304` | 4 MB per pthread, mirroring the desktop default. Removes a class of "stack overflow → memory access out of bounds" crashes. |
 | `-sSTACK_OVERFLOW_CHECK=2` | Real diagnostic on overflow instead of a silent OOB. |
 | `-sASSERTIONS=1` | Keep Emscripten's runtime sanity checks (kept on in release too). |
 | `-sEXIT_RUNTIME=0` | Engine stays alive across matches. |
@@ -318,48 +357,35 @@ to relink whenever the staged data changes.
 
 ```
 distrib/openlierox-wasm/
-├── index.html              # shell + injected COI <script>
+├── index.html              # shell
 ├── openlierox.js           # emscripten loader
 ├── openlierox.wasm         # compiled module
 ├── openlierox.data         # preload archive
-├── coi-serviceworker.js    # vendored COI shim
-├── coi-serviceworker.LICENSE
 ├── manifest.webmanifest    # PWA manifest — installable web app
 ├── icon-256.png            # app icons (manifest + shell <link>)
 ├── icon-512.png
 ├── build-info.json         # version / commit / file list (provenance)
-├── _headers                # Netlify / CF Pages headers
-├── .htaccess               # Apache headers + MIME types
-├── serve.py                # local test server (sets COOP/COEP headers)
+├── .htaccess               # Apache .wasm MIME type
+├── serve.py                # convenience local test server
 └── run.command             # macOS double-click launcher for serve.py
 ```
 
-To test a bundle locally, serve it over HTTP with the isolation headers
-(`python3 serve.py` inside the bundle, or double-click `run.command` on macOS),
-then open `http://localhost:8000/`.
-Opening `index.html` as a `file://` URL cannot work:
-the threaded build needs `SharedArrayBuffer`,
-which browsers only grant to cross-origin-isolated pages served over http(s),
-and `file://` can carry no headers
-and can't register the COI service-worker shim either.
-The shell shows an explanatory message in that case
-(and when a page is served without the isolation headers),
-rather than the browser's opaque "Script error.".
+To test a bundle locally, serve it over HTTP
+(`python3 serve.py` inside the bundle, `python3 -m http.server`, or
+double-click `run.command` on macOS), then open `http://localhost:8000/`.
+Opening `index.html` as a `file://` URL cannot work: the loader must
+`fetch()` the `.wasm`/`.data`, which `file://` disallows. The shell
+shows an explanatory message in that case rather than the browser's
+opaque "Script error.".
 
-The bundle works on:
-
-- **Hosts that set headers natively** (Netlify, Cloudflare Pages,
-  Apache via `.htaccess`, nginx/S3/CloudFront with manual config) —
-  the COI shim notices `crossOriginIsolated === true` on first load
-  and exits without registering.
-- **Hosts that can't** (GitHub Pages) — the shim registers as a
-  service worker on first load, triggers one `location.reload()`,
-  and intercepts every subsequent fetch to add COOP/COEP/CORP
-  headers. After the reload the engine boots normally.
-
-Caveats: the shim doesn't work in Safari Private Browsing or inside
-iOS in-app WebViews (service workers are disabled there). For those
-audiences, a header-capable host is the only option.
+Because this is a single-threaded build (no `SharedArrayBuffer`, no
+cross-origin isolation), it works on **any** static host —
+GitHub Pages, Netlify, Cloudflare Pages, S3/CloudFront, nginx,
+Apache — with **no special response headers** and no service-worker
+shim. The only requirement is that `.wasm` is served as
+`application/wasm` (nearly all hosts do this; the shipped `.htaccess`
+covers Apache). It also works in **Safari Private Browsing and iOS
+WebViews**, which the old isolated/service-worker path could not.
 
 ### Installable web app
 
@@ -454,14 +480,16 @@ isn't rejected as forbidden cross-origin.
 - **Audio gating.** Chrome's autoplay policy blocks the first
   AudioContext until a user gesture; the OpenAL JS backend handles
   the unblock once the user clicks the canvas.
-- **Fullscreen disabled** (see master switch above).
-- **Initial download is large.** ~90 MB `.wasm` + ~12 MB `.data`.
-  An emcc release build with `--release` is meaningfully smaller; a
-  brotli/gzip pre-compression pass on the host helps further.
-- **Safari Private Browsing / iOS in-app WebViews** can't run from
-  GitHub Pages because the COI shim depends on service workers,
-  which are disabled in those contexts. A header-capable host works
-  fine.
+- **Fullscreen disabled** (see master switch above). The canvas still
+  fills the browser viewport (aspect-preserving) in the normal windowed
+  view, so this is rarely felt.
+- **Initial download is large.** ~90 MB `.wasm` (debug) + ~12 MB
+  `.data`. An emcc release build (`--release`) is meaningfully smaller;
+  a brotli/gzip pre-compression pass on the host helps further.
+- **Software renderer.** The 2× supersample + sharp scaling keep it
+  crisp, but rendering is CPU-side; a hardware (WebGL) renderer is a
+  possible future step now that there are no pthread/atomics traps to
+  worry about.
 
 ## Working journal
 

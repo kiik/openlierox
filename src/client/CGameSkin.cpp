@@ -103,6 +103,26 @@ struct CGameSkin::Thread {
 	// run this after you added something to actionQueue to be sure that it will get handled
 	void startThread__unsafe(CGameSkin* skin) {
 		if(!ready) return; // !ready -> thread already running
+#ifdef __EMSCRIPTEN__
+		// Single-threaded browser build: no background loader thread.
+		// Drain the action queue synchronously right here, with the same
+		// lock discipline the threaded handler used (the caller holds
+		// mutex; unlock around each action->handle() so it can call back
+		// in). `ready` stays true throughout, so DrawInternal()'s
+		// blockUntilReady path never has to wait — which is what would
+		// otherwise deadlock the single thread (the loader action is what
+		// it waits for, and it could only run once this thread yielded).
+		while(actionQueue.size() > 0) {
+			curAction = actionQueue.front();
+			actionQueue.pop_front();
+			mutex.unlock();
+			curAction->handle();
+			mutex.lock();
+			cleanAction__unsafe(curAction);
+		}
+		signal.broadcast();
+		return;
+#endif
 		struct SkinActionHandler : Action {
 			CGameSkin* skin;
 			SkinActionHandler(CGameSkin* s) : skin(s) {}

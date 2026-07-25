@@ -57,7 +57,13 @@ TaskManager::TaskManager() {
 			}
 		}
 	};
+#ifndef __EMSCRIPTEN__
 	queueThread = threadPool->start(new QueuedTaskHandler(this), "queued task handler");
+#else
+	// Single-threaded browser build: no dedicated queue thread (its handle()
+	// loops forever, which would hang the cooperative pump). Queued tasks are
+	// dispatched through the deferred ThreadPool::start() instead — see below.
+#endif
 }
 
 TaskManager::~TaskManager() {
@@ -158,9 +164,18 @@ void TaskManager::start(Task* t, QueueType queue) {
 		t->state = Task::TS_WAITFORIMMSTART;
 		threadPool->start(handler, t->name + " handler");
 	} else {
+#ifdef __EMSCRIPTEN__
+		// No queue thread on the single-threaded browser build. The deferred
+		// ThreadPool::start() already runs actions serially and only after
+		// the caller's locks are released, so dispatch queued tasks the same
+		// way as immediate ones.
+		t->state = Task::TS_WAITFORIMMSTART;
+		threadPool->start(handler, t->name + " handler");
+#else
 		t->state = Task::TS_QUEUED;
 		queuedTasks.push_back(handler);
 		SDL_CondSignal(queueThreadWakeup);
+#endif
 	}
 }
 

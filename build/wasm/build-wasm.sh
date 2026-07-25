@@ -70,7 +70,7 @@ cat > "$PREBUILD_TMP/empty.c" <<'EOF'
 #include <AL/al.h>
 int main(void) { return 0; }
 EOF
-emcc -pthread \
+emcc \
     -sUSE_SDL=2 -sUSE_SDL_IMAGE=2 \
     -sUSE_LIBPNG=1 -sUSE_LIBJPEG=1 -sUSE_OGG=1 -sUSE_VORBIS=1 -sUSE_ZLIB=1 \
     -sSDL2_IMAGE_FORMATS='["bmp","gif","jpg","png","tga"]' \

@@ -71,6 +71,12 @@ public:
 	SmartPointer<ThreadPoolItem> start(std::function<Result()> fct, const std::string& name = "unknown worker");
 	bool wait(const SmartPointer<ThreadPoolItem>& item, int* status = NULL);
 	bool waitAll();
+#ifdef __EMSCRIPTEN__
+	// Single-threaded browser build: run all deferred actions enqueued by
+	// start(). Called once per frame from the main loop so fire-and-forget
+	// tasks still execute when nothing wait()s on them.
+	void pumpEmscripten();
+#endif
 	void dumpState(CmdLineIntf& cli) const;
 	void getAllWorkingThreads(std::map<ThreadId, std::string>& threads);
 };

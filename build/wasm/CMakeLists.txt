@@ -52,15 +52,19 @@ set(EMSCRIPTEN_PORTS
     "-sUSE_LIBJPEG=1"
     "-sUSE_OGG=1"
     "-sUSE_VORBIS=1"
-    "-sUSE_ZLIB=1"
+    "-sUSE_ZLIB=1")
     # SDL2_mixer is not used by OpenLieroX (it uses OpenAL directly).
-    # The bundled SDL2_mixer port also lacks an -mt variant in this
-    # Emscripten version, so pulling it in breaks --shared-memory.
     #
-    # Need real pthreads for OLX's heavily threaded game loop; without
-    # them SDL_CreateThread is a stub. Both compile and link must agree
-    # on -pthread.
-    "-pthread")
+    # This is a SINGLE-THREADED build: no -pthread. OLX's threaded
+    # subsystems (game loop, timers, socket readers, AI pathfinding, the
+    # task queue) are converted to cooperative per-frame ticks behind
+    # __EMSCRIPTEN__ guards, and ThreadPool::start() defers work instead of
+    # spawning std::threads. Dropping -pthread means the module needs no
+    # SharedArrayBuffer, and therefore no COOP/COEP cross-origin isolation,
+    # no service-worker shim and no special server headers — it runs as
+    # plain static files. It also lets the prebuilt emcc ports (SDL_image,
+    # libpng, ...) link cleanly, which the pthread build could not
+    # (they ship without atomics/bulk-memory; see emscripten #19410).
 
 add_compile_options(${EMSCRIPTEN_PORTS}
     -Wno-deprecated-declarations
@@ -87,7 +91,7 @@ set(LIBXML2_WITH_ZLIB ON  CACHE BOOL "")
 set(LIBXML2_WITH_ICONV OFF CACHE BOOL "")
 set(LIBXML2_WITH_HTTP OFF CACHE BOOL "")
 set(LIBXML2_WITH_FTP OFF CACHE BOOL "")
-set(LIBXML2_WITH_THREADS ON  CACHE BOOL "")
+set(LIBXML2_WITH_THREADS OFF CACHE BOOL "") # single-threaded build, no pthread
 set(LIBXML2_WITH_HTML ON  CACHE BOOL "")
 set(LIBXML2_WITH_TREE ON  CACHE BOOL "")
 set(LIBXML2_WITH_SAX1 ON  CACHE BOOL "")
@@ -250,7 +254,11 @@ message(STATUS "OLX git hash: ${OLX_GIT_HASH}")
 target_compile_definitions(openlierox PRIVATE
     NBREAKPAD
     OLX_GIT_HASH="${OLX_GIT_HASH}"
-    SYSTEM_DATA_DIR="/")
+    SYSTEM_DATA_DIR="/"
+    # Single-threaded build: no worker threads. Makes InitThreadPool
+    # allocate a pool of size 0 and turns off the background loading
+    # animation; the __EMSCRIPTEN__ guards do the rest.
+    SINGLETHREADED)
 
 target_link_libraries(openlierox PRIVATE
     LibXml2::LibXml2
@@ -262,9 +270,20 @@ target_link_libraries(openlierox PRIVATE
 #   - INITIAL_MEMORY: 256 MB up front; OLX easily allocates that loading
 #     mods, and growing memory mid-game freezes WebGL.
 #   - ALLOW_MEMORY_GROWTH: still allow grow if needed.
-#   - ASYNCIFY: lets blocking SDL_WaitEvent / SDL_Delay yield to the
-#     browser without rewriting the main loop. Pays a code-size +
-#     speed cost but keeps the source diff tiny.
+#   - ASYNCIFY: lets a blocking loop yield to the browser mid-stack and
+#     resume where it left off. OLX is a single big synchronous program:
+#     doMainLoop() runs the frame loop, but the menu system also runs *nested
+#     synchronous modal loops* -- Menu_MessageBox, the connecting/loading
+#     screens, the map editor -- each a while(true){ draw; ProcessEvents(); }
+#     that only returns once the user clicks. On one browser thread such a
+#     loop would freeze the tab forever: nothing repaints, no input is
+#     delivered, so the OK button can never be clicked. The single yield
+#     chokepoint is CapFPS() (src/client/AuxLib.cpp), called once per frame
+#     by both the top-level loop and every nested modal loop; on Emscripten
+#     it calls emscripten_sleep() to hand the thread back to the browser and
+#     resume mid-stack. ASYNCIFY instruments the whole module so any call can
+#     unwind/rewind; it works in every browser at the cost of a bigger .wasm
+#     and a slower cold start.
 #   - openal: built-in JS implementation, satisfies the AL/al.h symbols
 #     used by sound_sample_openal / sfxdriver_openal.
 #   - --preload-file: bake share/gamedir into a .data sidecar that
@@ -272,25 +291,31 @@ target_link_libraries(openlierox PRIVATE
 #   - --shell-file: drop the default Emscripten boilerplate; use ours.
 target_link_options(openlierox PRIVATE
     "-lopenal"
-    # Run main() (and therefore every blocking SDL_WaitEvent /
-    # threadPool->wait) on a Web Worker. The browser's main thread
-    # forwards canvas/keyboard/mouse events automatically. Requires
-    # COOP/COEP — see serve.py.
-    "-sPROXY_TO_PTHREAD=1"
-    # The main thread spawns several pthreads; pre-allocate a pool so
-    # we don't pay the worker-creation latency mid-game.
-    "-sPTHREAD_POOL_SIZE=12"
+    # Single-threaded: main() runs on the browser's main thread and the
+    # game loop is driven by emscripten_set_main_loop (requestAnimationFrame)
+    # from doMainLoop(). No PROXY_TO_PTHREAD, no pthread pool — and hence no
+    # SharedArrayBuffer / COOP / COEP requirement.
+    #
     # OLX's call chains (especially the gusanos blitters and the
-    # ConfigHandler / ScriptableVars setup) easily blow past
-    # Emscripten's 64 KB default stack per thread. 8 MB main stack
-    # and 4 MB per pthread mirror what the desktop build runs with
-    # and remove a whole class of "stack overflow → memory access
-    # out of bounds" crashes.
+    # ConfigHandler / ScriptableVars setup) easily blow past Emscripten's
+    # 64 KB default stack. 8 MB main stack mirrors the desktop build and
+    # removes a whole class of "stack overflow → memory access out of
+    # bounds" crashes.
     "-sSTACK_SIZE=8388608"
-    "-sDEFAULT_PTHREAD_STACK_SIZE=4194304"
     "-sSTACK_OVERFLOW_CHECK=2"
     "-sINITIAL_MEMORY=536870912"
     "-sALLOW_MEMORY_GROWTH=1"
+    # Let the frame loop and nested modal loops (Menu_MessageBox, loading /
+    # connecting screens, map editor, ...) yield to the browser via
+    # emscripten_sleep() in CapFPS() and resume mid-stack, instead of freezing
+    # the single browser thread. See the note above.
+    "-sASYNCIFY=1"
+    # ASYNCIFY spills the live locals of every frame on the call stack into a
+    # fixed buffer when it unwinds at the yield, and restores them on rewind.
+    # The 4 KB default overflows once CapFPS() yields from deep inside
+    # game.frame() (the gusanos update chain), aborting mid-match with
+    # "RuntimeError: unreachable". Size it for OLX's deepest yielding stack.
+    "-sASYNCIFY_STACK_SIZE=1048576"
     "-sASSERTIONS=1"
     "-sEXIT_RUNTIME=0"
     "-sFORCE_FILESYSTEM=1"

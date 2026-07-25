@@ -153,6 +153,11 @@ int handleStdin(void*) {
 static std::thread stdinHandleThread;
 
 Result initStdinCLISupport() {
+#ifdef __EMSCRIPTEN__
+	// No interactive stdin in the browser, and the single-threaded build has
+	// no pthreads to run the reader thread on anyway.
+	return "no stdin CLI in the browser";
+#endif
 	if(!isatty(STDIN_FILENO))
 		return "stdin is not a terminal type device";
 

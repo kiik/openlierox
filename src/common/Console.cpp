@@ -94,9 +94,25 @@ struct IngameConsole : CmdLineIntf {
 	History::iterator historyPos;
 	
 	void pushKey(const KeyboardEvent& input) {
-		Mutex::ScopedLock lock(mutex);
-		keyQueue.push_back(input);
-		changeSignal.broadcast();
+		{
+			Mutex::ScopedLock lock(mutex);
+			keyQueue.push_back(input);
+			changeSignal.broadcast();
+		}
+#ifdef __EMSCRIPTEN__
+		// Single-threaded browser build: no handler thread (its while(!quit)
+		// loop would hang the cooperative pump). Process keys inline here
+		// instead, mirroring handler()'s drain/lock discipline.
+		{
+			Mutex::ScopedLock lock(mutex);
+			while(keyQueue.size() > 0) {
+				std::list<KeyboardEvent> queue; queue.swap(keyQueue);
+				mutex.unlock();
+				handleKeys(queue);
+				mutex.lock();
+			}
+		}
+#endif
 	}
 
 	void addHistoryEntry(const std::string& text) {
@@ -185,7 +201,11 @@ struct IngameConsole : CmdLineIntf {
 		input.text = "";
 		input.pos = 0;
 		keyQueue.clear();
+#ifndef __EMSCRIPTEN__
 		thread = StartMemberFuncInThread(IngameConsole, IngameConsole::handler, "IngameConsole handler");
+#endif
+		// Single-threaded browser build: no handler thread; pushKey() drains
+		// the queue inline.
 	}
 };
 

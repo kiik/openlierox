@@ -145,6 +145,11 @@ private:
 void InitializeTimers();
 void ShutdownTimers();
 
+// Single-threaded browser build only: tick all active timers once per
+// frame (called from the main loop) instead of running one thread per
+// timer. No-op / unused on threaded builds.
+void TimerSystem_tickEmscripten();
+
 
 // A class for profiling - measures the time between being constructed and destructed
 // Just put it in a scope/function you want to profile, it will print the result to console

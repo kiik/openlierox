@@ -275,13 +275,25 @@ void *GetWindowHandle()
 
 void CapFPS() {
 #ifdef __EMSCRIPTEN__
-	// Don't sleep on wasm. The browser's compositor already paces
-	// presentation at vsync (~60 Hz), so the game-thread sleeping here
-	// only adds keyboard-input latency without saving any visible work:
-	// any SDL_KEYDOWN that arrives in the OLX mainQueue while the thread
-	// is mid-SDL_Delay has to wait for the sleep to end before
-	// ProcessEvents picks it up next frame. Gamepad input doesn't suffer
-	// because it's polled directly during simulation.
+	// Single-threaded browser build: we ARE the main loop on the browser's one
+	// thread, so this is where we hand control back to it. emscripten_sleep()
+	// (ASYNCIFY) unwinds to the browser — letting it paint the frame we just
+	// presented and deliver queued mouse/keyboard input — then resumes here on
+	// a later tick. This is called at the end of every top-level frame AND at
+	// the end of every nested modal loop iteration (Menu_MessageBox, the map
+	// editor, ...), which is exactly what keeps those modal loops from freezing
+	// the tab: without a yield the browser can never repaint or deliver the
+	// click that would dismiss them. Pace to nMaxFPS so we don't spin at the
+	// setTimeout ceiling; a 0 ms sleep still yields when we're already behind.
+	int ms = 0;
+	if(tLX) {
+		const float fps = (tLXOptions && tLXOptions->nMaxFPS > 0) ? (float)tLXOptions->nMaxFPS : 60.0f;
+		const TimeDiff frame = TimeDiff(1.0f / fps);
+		const TimeDiff elapsed = GetTime() - tLX->currentTime;
+		if(elapsed < frame)
+			ms = (int)(frame - elapsed).milliseconds();
+	}
+	emscripten_sleep(ms > 0 ? ms : 0);
 	return;
 #else
 	// With vsync on, SDL_RenderPresent already blocks to the display refresh and
@@ -478,12 +490,25 @@ bool VideoPostProcessor::initWindow() {
 		}
 	}
 
+	// On Emscripten the SDL window IS the HTML canvas backing store, and the
+	// page then CSS-scales that canvas to fill the browser viewport.
+	// Rendering at the logical 640x480 and letting CSS blow it up looks soft
+	// and blocky, so make the backing store a supersampled multiple of the
+	// logical size; sharp scaling (in resetVideo) fills it crisply and CSS
+	// does the final fit-to-window. Desktop keeps window == logical size.
+	int winW = screenWidth(), winH = screenHeight();
+#if defined(__EMSCRIPTEN__)
+	const int kWasmRenderScale = 2;
+	winW = screenWidth() * kWasmRenderScale;
+	winH = screenHeight() * kWasmRenderScale;
+#endif
+
 setvideomode:
 	// Window title: the full version string incl. the "+git.HASH" suffix,
 	// so a dev build is identifiable at a glance.
 	// This is the exact build string (see GetGameVersionStringFull),
 	// shown verbatim rather than reconstructed via Version.
-	m_window = SDL_CreateWindow((std::string(GetGameName()) + " " + GetGameVersionStringFull()).c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, screenWidth(), screenHeight(), vidflags);
+	m_window = SDL_CreateWindow((std::string(GetGameName()) + " " + GetGameVersionStringFull()).c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, winW, winH, vidflags);
 	
 	if(m_window.get() == NULL) {
 		if (resetting)  {
@@ -651,8 +676,15 @@ bool VideoPostProcessor::resetVideo() {
 	// sharper than stretching the 480p band to the display linearly in one go.
 	m_sharpTarget = NULL;
 	m_sharpFactor = 1;
-#if !defined(__EMSCRIPTEN__)
-	if(tLXOptions->bSharpScaling) {
+#if defined(__EMSCRIPTEN__)
+	// Always prescale in the browser: the canvas backing is supersampled
+	// (see initWindow) and the page CSS-scales it to fit, so a crisp integer
+	// prescale here is what turns the soft/blocky upscale into a sharp one.
+	const bool wantSharpScaling = true;
+#else
+	const bool wantSharpScaling = tLXOptions->bSharpScaling;
+#endif
+	if(wantSharpScaling) {
 		SDL_RendererInfo info;
 		int outW = 0, outH = 0;
 		SDL_GetRendererOutputSize(m_renderer.get(), &outW, &outH);
@@ -672,7 +704,6 @@ bool VideoPostProcessor::resetVideo() {
 				m_sharpFactor = factor;
 		}
 	}
-#endif
 
 	// The band texture: NEAREST when we prescale it (crisp), else LINEAR (smooth)
 	// because then it is stretched straight to the window.

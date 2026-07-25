@@ -1368,6 +1368,14 @@ std::string Game::wormName(int wormId) {
 }
 
 bool Game::allowedToSleepForEvent() {
+#ifdef __EMSCRIPTEN__
+	// Single-threaded browser build: the game loop runs inside the
+	// browser's requestAnimationFrame callback (see doMainLoop). Blocking
+	// on SDL_WaitEvent here would freeze the only thread and hang the tab,
+	// so never sleep — the next rAF tick polls events instead.
+	return false;
+#endif
+
 	if(state > Game::S_Inactive)
 		// we are in connecting, lobby, game or so -> don't sleep
 		// In theory, in connecting/lobby, network events should
