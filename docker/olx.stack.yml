@@ -1,0 +1,72 @@
+# =============================================================================
+# OpenLieroX dedicated server -- Docker Swarm / Portainer stack
+# =============================================================================
+#
+# A single headless dedicated server for a Swarm cluster (deploy this straight
+# as a Portainer stack). Unlike a web app there is no reverse proxy: the game
+# speaks UDP directly to clients, so the port is published in host mode (which
+# also preserves the real client address the NAT-punching handshake needs).
+#
+# Prerequisites
+#   1. Build and PUSH the image to a registry the Swarm nodes can pull, e.g.
+#        docker build -f docker/Dockerfile -t registry.example/openlierox-dedicated:latest .
+#        docker push registry.example/openlierox-dedicated:latest
+#      then set OLX_IMAGE to that ref (Portainer cannot build from source).
+#   2. olx_data is a LOCAL volume, so the service is pinned to one node via a
+#      placement constraint. Label the target node:
+#        docker node update --label-add olx=true <node-id>
+#
+# Stack environment variables (Portainer "Environment variables", all optional)
+#   OLX_IMAGE            image ref to run   (default: openlierox-dedicated:latest)
+#   OLX_PORT             UDP game port      (default: 23400)
+#   OLX_SERVER_NAME      browser name       (default: stock)
+#   OLX_MAX_PLAYERS      player cap 1-32    (default: 14)
+#   OLX_MIN_PLAYERS      players to start   (default: 1)
+#   OLX_PRESET           preset cycle csv   (default: stock cycle)
+#   OLX_REGISTER_SERVER  1 listed / 0 not   (default: 1)
+#   OLX_WELCOME_MESSAGE  join message       (default: stock)
+#   OLX_ADMIN_PASSWORD   /login password    (default: none)
+#
+# Run several games by deploying this stack more than once with distinct stack
+# names, OLX_PORT values and (if you want isolated stats) volume names.
+# See docker/README.md for the variable reference and docker-compose.yml for
+# the non-Swarm single-host setup.
+# =============================================================================
+version: "3.8"
+
+volumes:
+  olx_data:   # logs, ranking, players.dat -- survives restarts and redeploys
+
+services:
+  olx-dedicated:
+    image: ${OLX_IMAGE:-openlierox-dedicated:latest}
+    environment:
+      OLX_PORT: ${OLX_PORT:-23400}
+      OLX_SERVER_NAME: ${OLX_SERVER_NAME:-}
+      OLX_MAX_PLAYERS: ${OLX_MAX_PLAYERS:-14}
+      OLX_MIN_PLAYERS: ${OLX_MIN_PLAYERS:-1}
+      OLX_PRESET: ${OLX_PRESET:-}
+      OLX_REGISTER_SERVER: ${OLX_REGISTER_SERVER:-1}
+      OLX_WELCOME_MESSAGE: ${OLX_WELCOME_MESSAGE:-}
+      OLX_ADMIN_PASSWORD: ${OLX_ADMIN_PASSWORD:-}
+    ports:
+      # Host mode: bypass the Swarm ingress mesh so the server sees each
+      # client's real UDP source address (the routing mesh would SNAT it).
+      - target: ${OLX_PORT:-23400}
+        published: ${OLX_PORT:-23400}
+        protocol: udp
+        mode: host
+    volumes:
+      - olx_data:/data
+    deploy:
+      replicas: 1
+      placement:
+        # olx_data is a local volume -- pin to the node that holds it.
+        constraints:
+          - node.labels.olx == true
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      update_config:
+        # A single UDP server writes single-file stats; never run two at once.
+        order: stop-first

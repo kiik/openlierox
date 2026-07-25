@@ -83,3 +83,8 @@ __pycache__
 # Offscreen menu-render dev output
 .render-home/
 .render-out/
+
+# Local docker compose environment (copied from docker/.env.example)
+docker/.env
+docker/.env.*
+!docker/.env.example

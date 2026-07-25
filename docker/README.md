@@ -39,6 +39,41 @@ a volume — mount it to keep ranking across restarts:
 docker run -d -p 23400:23400/udp -v olx-data:/data openlierox-dedicated
 ```
 
+## docker compose
+
+For a declarative single-server setup, use the committed compose file. Copy
+the example environment, edit it, and bring the stack up:
+
+```sh
+cp docker/.env.example docker/.env
+# edit docker/.env
+docker compose -f docker/docker-compose.yml up -d
+```
+
+`docker/.env` holds every `OLX_*` variable (see the table below); the compose
+file publishes `OLX_PORT` as UDP and keeps state on the `olx-data` named
+volume, so ranking and logs survive `docker compose down && up`. Building from
+source happens on first `up` (or `--build`); pass a real version with
+`OLX_VERSION=…` in `.env`.
+
+Run several games at once as separate stacks with distinct project names,
+env files and ports:
+
+```sh
+docker compose -p olx-b --env-file docker/.env.b -f docker/docker-compose.yml up -d
+```
+
+## Docker Swarm / Portainer
+
+For a Swarm cluster, deploy `docker/olx.stack.yml` (directly as a Portainer
+stack). It runs the same image with a `deploy` block and publishes the UDP
+port in **host mode** so the server sees each client's real address. Because
+the state volume is node-local, the service is pinned with a placement
+constraint — label the target node `docker node update --label-add olx=true
+<node-id>` — and Portainer pulls a pushed image, so set `OLX_IMAGE` to a
+registry ref (Portainer cannot build from source). The header of that file
+documents the prerequisites and stack variables.
+
 ## Configuration
 
 | Variable              | Default             | Meaning                                                        |
