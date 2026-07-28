@@ -321,6 +321,13 @@ target_link_options(openlierox PRIVATE
     "-sFORCE_FILESYSTEM=1"
     "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS','callMain']"
     "--preload-file" "${OLX_PRELOAD_DIR}/gamedir@/gamedir"
+    # Keep the .data package in IndexedDB across visits. It is 85% of what a
+    # first visit transfers, and GitHub Pages sends max-age=600 with no way to
+    # configure headers, so without this every visit ten minutes apart pays for
+    # the whole package again. The cache entry is keyed on sha256 of the package
+    # (tools/file_packager.py), so a rebuild invalidates it automatically and a
+    # stale cache cannot serve content that does not match this build.
+    "--use-preload-cache"
     "--shell-file" "${WASM_DIR}/shell/shell.html")
 
 # Generate the .html alongside .js + .wasm + .data.
