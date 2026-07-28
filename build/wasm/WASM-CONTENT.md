@@ -403,13 +403,26 @@ compatibility with. That is unusually free ground.
 - **A static registry (recommended).** A separate repository holding one
   small manifest per item — id, kind (`mod` / `level` / `skin` / `theme`),
   title, author, version, size, `sha256`, licence, tags, preview image,
-  blob URL — plus a generated `index.json`, published to GitHub Pages,
-  with the blobs as release assets. Everything needed already works:
-  Pages sends `access-control-allow-origin: *` and gzips responses, so
-  the browser client reads it directly with no server, no CORS work and
-  no hosting bill. Submission is a pull request, which means moderation
-  is code review with an audit trail, and versioning is free. The cost is
-  friction — a contributor needs a GitHub account — and no in-app upload.
+  blob URL — plus a generated `index.json`, published to GitHub Pages.
+  Pages is the right host: it sends `access-control-allow-origin: *` and
+  gzips responses, so the browser client reads it directly with no
+  server, no CORS work and no hosting bill. Submission is a pull request,
+  which means moderation is code review with an audit trail, and
+  versioning is free. The cost is friction — a contributor needs a GitHub
+  account — and no in-app upload.
+
+  **Correction: the blobs cannot be release assets**, which an earlier
+  draft of this section recommended. Two independent reasons, both
+  measured against a real asset. A release download 302s to
+  `release-assets.githubusercontent.com`, and *neither* the redirect nor
+  the `206` carries any `access-control-*` header, so a browser on
+  another origin cannot read it at all. And the redirect target is a
+  signed URL that expires about an hour out (`se=…` in the query), so it
+  could never have been written into a static index even if CORS
+  allowed it. The registry has to serve the bytes from the same Pages
+  site that serves the index. Generalizing: any third-party origin is
+  assumed CORS-hostile until proven otherwise, so "just link to where
+  the mod already lives" is not available to the browser client.
 - **A content API service** next to the relay gateway: in-app upload,
   ratings, a moderation queue. This is the trap. It means accepting
   arbitrary uploads and serving them to other players' machines, and OLX

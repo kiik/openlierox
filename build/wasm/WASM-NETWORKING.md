@@ -18,7 +18,7 @@ attaches to, verified against the tree at the time of writing.
 |---|---|
 | Role of the browser | **Decided** — client only. A browser cannot host; see [Constraints](#constraints-that-are-not-negotiable) |
 | Transport for P0 | **Decided** — relayed UDP through a gateway, over `wss://` |
-| Transport mechanism | **Open** — Emscripten sockfs (no engine code) vs. a custom bridge. Settled by the [spike](#p0--spike-does-sockfs-already-do-this) |
+| Transport mechanism | **Decided** — a custom bridge with its own framing. Emscripten sockfs was measured and cannot do it; see the [spike](#p0--spike-does-sockfs-already-do-this-answered-no) |
 | Topology | **Decided** — the existing host-authoritative star; the gateway is a relay, not a peer |
 | WebRTC DataChannels | **Deferred** — the upgrade that buys direct connect, not the first step |
 | WebTransport | **Deferred** — the datagram upgrade to the same gateway |
@@ -58,14 +58,24 @@ Two facts about OLX make this tractable and shape every decision here:
 These are measured properties of the browser platform and of this code
 base, not preferences. Every design below has to live with them.
 
-- **The browser cannot host.** Emscripten's socket layer emulates UDP as
-  one WebSocket per peer, and `bind()` on a datagram socket needs a
-  listen server that only exists under Node — in a browser the attempt
-  is swallowed as `EOPNOTSUPP`
-  (`emsdk/upstream/emscripten/src/library_sockfs.js:447-468`). WebRTC does
-  not change the conclusion: an unaddressable peer still needs a
-  signaling rendezvous before anyone can reach it. **The browser is a
-  client. The authoritative server runs on the desktop or in the
+- **The browser cannot host, and it fails quietly rather than loudly.**
+  Emscripten's socket layer emulates UDP as one WebSocket per peer.
+  Binding a datagram socket is supposed to launch a listen server, which
+  exists only under Node; in a browser that `listen` throws `EOPNOTSUPP`
+  and `bind()` swallows it
+  (`emsdk/upstream/emscripten/src/library_sockfs.js:458-463`).
+  Note what that means: `bind()` itself *succeeds* — the same function
+  has already recorded `saddr`/`sport`, and it returns normally — so a
+  caller gets a socket that looks bound, and `getsockname` will answer.
+  HawkNL binds unconditionally on open
+  ([libs/hawknl/src/sock.c:881](../../libs/hawknl/src/sock.c#L881)), so
+  it sails past this point and only discovers the problem much later.
+  The recorded port is not inert either: it is what sockfs puts in the
+  10-byte handshake it prepends to datagram peers, which is its own
+  hazard — see the sockfs spike answering #27.
+  WebRTC does not change the conclusion: an unaddressable peer still
+  needs a signaling rendezvous before anyone can reach it. **The browser
+  is a client. The authoritative server runs on the desktop or in the
   headless container.** Any phase that assumed browser-hosted play was
   wrong.
 - **The wasm build has no way to express a remote address today.** With
@@ -196,33 +206,70 @@ are blocking spinners and would be a problem in a browser, but they have
 no callers anywhere in `src/`, `include/`, `libs/` or `tests/`. Leave
 them alone; do not build on them.
 
-### P0 — spike: does sockfs already do this?
+### P0 — spike: does sockfs already do this? **Answered: no.**
 
-Before writing a transport, settle whether one is needed. Emscripten's
-socket layer already emulates UDP over WebSockets: one WebSocket per
-`(addr, port)` peer, created on demand by `sendto`, with a
-websockify-compatible handshake that sends the bound port first
-(`library_sockfs.js:136, 238-250, 489, 639`), and the target URL is
-configurable through `Module.websocket.url`.
+This section asked whether Emscripten's own UDP-over-WebSocket emulation
+made a bridge unnecessary — one WebSocket per `(addr, port)` peer created
+on demand by `sendto`, a websockify-compatible handshake, and a target
+URL configurable through `Module.websocket.url`. If stock `NL_IP` worked
+against a websockify-style gateway there would have been no bridge to
+write.
 
-If HawkNL's stock `NL_IP` driver works under Emscripten against a
-websockify-style gateway, then there is **no bridge to write** — no
-peer map, no JS library, no custom framing — and the per-destination
-addressing problem is solved by sockfs rather than by us. Two things to
-check while spiking, both cheap to answer by building:
+It does not, and the spike answering #27 settled it by measurement rather
+than by reading. Two gaps are *independently* decisive, so neither can be
+worked around by fixing the other:
 
-- HawkNL's `sock.c` calls `select()` with timeouts
-  ([:1331](../../libs/hawknl/src/sock.c#L1331),
-  [:1453](../../libs/hawknl/src/sock.c#L1453)); Emscripten treats those
-  timeouts as zero. Harmless for the existing `nlPollGroup(..., 0)` tick
-  path, but `nlRead` and `nlWrite` need checking.
-- Address strings must round-trip (see
-  [Constraints](#constraints-that-are-not-negotiable)); with `NL_IP`
-  selected they should, since the loopback driver is no longer in play —
-  verify rather than assume.
+1. **Stock `NL_IP` cannot send a single datagram from a tab.** HawkNL
+   opens `PF_INET6` datagram sockets unconditionally
+   ([sock.c:847](../../libs/hawknl/src/sock.c#L847)) and encodes IPv4
+   peers as `::ffff:a.b.c.d`
+   ([:1898](../../libs/hawknl/src/sock.c#L1898)). sockfs completes a
+   prefix URL by string concatenation with no brackets
+   (`library_sockfs.js:191-194`), producing `ws://::ffff:1.2.3.4:23400/`
+   — an invalid URL. The constructor throws and it surfaces as
+   `EHOSTUNREACH` (`:219-221`). Measured in headless Chromium:
+   `sendto` to the mapped address returned `-1 errno=23` while an
+   `AF_INET` control against the same port succeeded.
+2. **The destination cannot be conveyed to a relay.** The peer URL is
+   either derived from the destination — in which case the browser dials
+   the game server itself and there is no relay in the path — or a fixed
+   gateway URL, in which case the address and port survive only as a JS
+   map key and never reach the wire. Two datagrams to *different*
+   destinations produced two WebSocket handshakes with byte-identical
+   requests. Exactly one of "reach a relay" and "name the destination"
+   is expressible, never both.
 
-A day spent here decides whether the transport work is roughly 100 lines
-of configuration or roughly 500 lines of bridge. Do it first.
+So the transport is a bridge, not configuration, and the gateway needs
+its **own** framing rather than websockify's. That is the shape assumed
+by [If a bridge is needed](#if-a-bridge-is-needed) below, which is now
+the live plan rather than the fallback.
+
+Three secondary findings from the same spike, which the bridge has to
+respect:
+
+- **sockfs prepends a 10-byte handshake** to datagram peers —
+  `ff ff ff ff 'p' 'o' 'r' 't' <hi> <lo>` (`library_sockfs.js:241-250`).
+  Four leading `0xFF` is OLX's own connectionless marker
+  ([CServer.cpp:756](../../src/server/CServer.cpp#L756) parses
+  `readInt(4) == -1`), so a forwarded handshake is parsed as a malformed
+  *game* packet rather than ignored. Even "just run websockify" would
+  have needed a documented rule for those bytes.
+- **Backpressure is invisible to C.** `bufferedAmount` grew to 2798 with
+  both sends still reporting success, so the engine cannot see a
+  congested socket.
+- **`select()` is worse than assumed**: readiness on datagram sockets is
+  reported as a constant and the timeout is ignored. Harmless for the
+  per-frame non-blocking drain, but unusable as a signal — so the bridge
+  must not depend on one.
+
+`-sPROXY_POSIX_SOCKETS` was also weighed and rejected: it blocks on
+`emscripten_futex_wait`, needs the COOP/COEP headers GitHub Pages will
+not send, does not compose with `-sASYNCIFY=1`, and is an open proxy by
+construction.
+
+One question the spike deliberately left open, because it cannot change
+the verdict: whether a resolved *hostname* escapes the malformed-URL form
+in gap 1. Gap 2 rejects that form regardless.
 
 ### If a bridge is needed
 
@@ -328,8 +375,10 @@ Each phase is independently testable and leaves the build shippable.
 
 ## Open questions
 
-- Does stock `NL_IP` work under Emscripten against a websockify-style
-  gateway? Everything else depends on the answer.
+- ~~Does stock `NL_IP` work under Emscripten against a websockify-style
+  gateway?~~ **Answered: no.** Measured in the #27 spike; see
+  [P0](#p0--spike-does-sockfs-already-do-this-answered-no). The bridge
+  and its own framing are now the plan.
 - Address encoding: how a gateway-relayed server is written as text so
   connect-by-address and the server list round-trip it, with room for a
   future direct-peer form.
