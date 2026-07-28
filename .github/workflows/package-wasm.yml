@@ -34,6 +34,7 @@ jobs:
             build-essential \
             git \
             python3 \
+            python3-websocket \
             zip
 
       - name: Cache Emscripten SDK
@@ -62,6 +63,25 @@ jobs:
 
       - name: Build (release)
         run: ./build/wasm/build.sh
+
+      # Boot the bundle we just built in headless Chrome and require it to
+      # reach the main menu. Without this the job only proves the build
+      # links, not that the browser build still runs.
+      - name: Boot the bundle in headless Chrome
+        run: |
+          set -euo pipefail
+          google-chrome --version
+          OLX_WASM_ROOT="$PWD/distrib/openlierox-wasm" \
+          OLX_HEADLESS_SHOTS="$PWD/wasm-headless-shots" \
+            python3 build/wasm/run-headless.py 90 30
+
+      - name: Upload headless screenshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: wasm-headless-shots
+          path: wasm-headless-shots
+          if-no-files-found: ignore
 
       - name: Archive bundle
         id: bundle
