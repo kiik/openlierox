@@ -20,7 +20,7 @@ time of writing; where something is unmeasured it says so.
 | Download from local disk | **Decided** — the first content feature; needs no server |
 | Server-side catalogue | **Decided in shape**, blocked on HTTP |
 | Bundle download cost | **Measured.** ~19.2 MB compressed on first visit, 85% of it game data — see [Download cost](#download-cost) |
-| Repeat-visit cost | **Same as the first visit.** Pages sends `max-age=600` and allows no header configuration |
+| Repeat-visit cost | **85% removed.** `--use-preload-cache` keeps the package in IndexedDB, verified across two browser sessions. The remaining ~2 MB of wasm and JS still refetches, because Pages sends `max-age=600` and allows no header configuration |
 | Community layer | **Proposed, undecided** — see [A community layer](#a-community-layer) |
 
 ## The starting position
@@ -271,14 +271,39 @@ this section.
 
 ### Measures, in order of value per line of code
 
-- **`--use-preload-cache`, one flag.** `file_packager` stores the package
-  in IndexedDB keyed by `sha256(data)`
+- **`--use-preload-cache`, one flag. Done and measured**
+  ([CMakeLists.txt:323](CMakeLists.txt#L323)). `file_packager` stores the
+  package in IndexedDB keyed by `sha256(data)`
   ([file_packager.py:784](https://github.com/emscripten-core/emscripten/blob/main/tools/file_packager.py)),
-  so the cache self-invalidates when content changes — no staleness risk.
-  `emcc` forwards the flag straight through
-  (`emcc.py:1331` → `link.py:3056`), so this is one line in
+  and `emcc` forwards the flag straight through
+  (`emcc.py:1331` → `link.py:3056`), so it is one line in
   `target_link_options`. It removes 16.4 MB — 85% of the transfer — from
-  every repeat visit.
+  every repeat visit. It costs 4 KB of JS.
+
+  Verified by running it, not by reading the flag: two loads of the local
+  bundle in headless Chromium sharing one profile, counted at the server.
+  The first requests `openlierox.data`; the second does not, and still
+  reaches `/gamedir` and loads the touch-control layout out of the package,
+  so it is reading cached content rather than merely skipping a fetch. The
+  embedded key (`sha256-16c8ebb0…`) matches `sha256sum` of the package
+  exactly. Rebuilding with one file added to the stage changes both, and the
+  next load refetches — so a returning player cannot be served content from
+  a build they are no longer running.
+
+  Two caveats the test exposed, neither a reason not to ship it:
+
+  - **The key is version-scoped, and nothing evicts.** The cache key runs
+    through `Module.locateFile`, which the channel shell defines as
+    `ENGINE_DIR + p` — that is `/web-demo/<channel>/<version>/`. So the
+    common case works (a player returns, no new release, no download), but
+    every release a player visits leaves its own ~19 MB entry behind
+    forever. Deleting the other keys in the store on startup is a few lines
+    and belongs with this work; browser quota eviction is not a plan.
+  - **The preload stage is not a CMake dependency.** Editing staged content
+    and rebuilding does *not* repackage — the hash was unchanged until the
+    link output was deleted by hand. That is a pre-existing build wrinkle,
+    not caused by this flag, but it means a data-only change can ship the
+    previous `.data`. Worth fixing separately.
 - **A service worker for the wasm and JS.** This is not new
   infrastructure: the live site already registers one
   (`/web-demo/coi-serviceworker.js`) to inject COOP/COEP headers, which
@@ -422,8 +447,9 @@ fields are what make the difference between a channel and a liability.
    else is possible first.
 2. Local import and export, reusing the extracted installer. First
    visible win; no server involved.
-3. Cut the wait with the measured levers: `--use-preload-cache`, the
-   service worker, a smaller boot stage, wasm download progress.
+3. Cut the wait with the measured levers. `--use-preload-cache` is done;
+   what remains is evicting superseded package versions, the service
+   worker, a smaller boot stage, and wasm download progress.
 4. `emscripten_fetch` backend for `CHttp`, plus the per-frame
    `ProcessDownloads` pump.
 5. The catalogue, reading a static index.
