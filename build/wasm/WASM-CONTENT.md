@@ -15,11 +15,13 @@ time of writing; where something is unmeasured it says so.
 | Area | State |
 |---|---|
 | Persistent user data | **Missing.** No IDBFS mount exists; every write is lost on reload |
-| Content shipped | A curated stage: 2392 files, 19.5 MB packed. Full `share/gamedir` is 8083 files / 136 MB |
+| Content shipped | A curated stage: 2396 files, 26 MB on disk, 19.5 MB packed. Full `share/gamedir` is 8083 files / 136 MB |
 | HTTP from the browser | **Broken**, in two independent ways — see [HTTP](#http-is-broken-in-two-ways) |
 | Download from local disk | **Decided** — the first content feature; needs no server |
 | Server-side catalogue | **Decided in shape**, blocked on HTTP |
-| Bundle download cost | **Unmeasured for release builds.** Measure before optimizing |
+| Bundle download cost | **Measured.** ~19.2 MB compressed on first visit, 85% of it game data — see [Download cost](#download-cost) |
+| Repeat-visit cost | **Same as the first visit.** Pages sends `max-age=600` and allows no header configuration |
+| Community layer | **Proposed, undecided** — see [A community layer](#a-community-layer) |
 
 ## The starting position
 
@@ -142,14 +144,24 @@ extractor. Shape:
   are real, though — `share/gamedir/levels` holds 79 `.lxl` files **and
   61 directories** (Gusanos maps with `config.cfg`, `level.png`,
   `material.png`) — and the current download path cannot install those.
-- **Same origin as the bundle.** The client is published to GitHub Pages;
-  serving the catalogue from that same site means no CORS negotiation and
-  the browser HTTP cache does the caching for free. The existing mirror
-  list in `cfg/downloadservers.txt` points at `openlierox.net` and
-  SourceForge, neither of which sends CORS headers, so it is not usable
-  from a browser as-is.
-- **Scope it to content already in `share/gamedir`** — that is in-repo
-  and already licensed. Third-party content is what local import is for.
+- **Any GitHub Pages origin will do — same-origin is not required.**
+  Pages returns `access-control-allow-origin: *` on JSON *and* on binary
+  assets (verified against `openlierox.net/web-demo/`), so the catalogue
+  can live in its own repository and still be fetched from the demo. An
+  earlier draft of this document claimed the catalogue had to be
+  same-origin; that was generalized from the wrong evidence. What is
+  genuinely unusable is the existing mirror list in
+  `cfg/downloadservers.txt` — and not because of CORS, but because both
+  entries are simply dead: the SourceForge SVN URL returns 404, and
+  `openlierox.net/file_ignore_case.php` returns 404 now that the site is
+  static Pages. In-game HTTP content download is therefore broken on
+  *every* platform, not only in the browser.
+- **Integrity, not trust.** A catalogue entry carries a `sha256`, and the
+  client verifies before installing. Cheap, and it is the difference
+  between a distribution channel and a place a mistake becomes permanent.
+- **Start with content already in `share/gamedir`** — in-repo and already
+  licensed — then widen through the community layer below. Third-party
+  content is also what local import is for.
 
 ### Content over the game channel, free
 
@@ -208,44 +220,201 @@ called from the per-frame pump.
 
 ## Download cost
 
-**Measure first.** The local debug bundle is 123 MB of wasm plus 19.5 MB
-of data, but CI ships `--release`
-([build.sh:23](build.sh#L23)) and that size has not been recorded
-anywhere. Optimizing against the debug number would be optimizing
-against a number nobody downloads. Record release `.wasm`, `.js` and
-`.data` sizes, and the transfer sizes actually observed from Pages, then
-decide.
+### Measured
 
-Once measured, in rough order of value per line of code:
+The 123 MB figure that framed earlier discussion is a debug artifact and
+nobody downloads it. `llvm-strip --strip-debug` takes the local debug
+`openlierox.wasm` from 123465852 to 61998477 bytes, so half of it is
+DWARF, and the rest is unoptimized `-O0` code.
 
-- **Transfer compression at the hosting layer.** wasm compresses very
-  well; whether GitHub Pages already serves it compressed needs
-  checking, and a self-hosted container can do brotli deliberately. This
-  is configuration, not code, and it is the largest single lever.
-- **`--use-preload-cache`.** `file_packager` can store the data package
-  in IndexedDB with a version check, so repeat visits skip the download
-  entirely ([tools/file_packager.py](https://github.com/emscripten-core/emscripten/blob/main/tools/file_packager.py), `--use-preload-cache`,
-  also `--separate-metadata` and `--lz4`). Available in the pinned emsdk
-  3.1.74. Cheap to try; costs a second copy of the data in IndexedDB, and
-  the version check invalidates on every rebuild, which is noise during
-  development.
-- **A smaller stage.** Once local import and the catalogue exist, the
-  preload only has to carry what a first-time player needs to start a
-  game — the shared trees (`data`, `themes`, `skins`) plus one mod and a
-  couple of levels. Everything else becomes opt-in.
-- **A service worker** caching the bundle for instant repeat loads and
-  offline play. Straightforward, but pointless before the release size is
-  known and the wrong thing to do while a stale cache can serve a broken
-  build — needs a versioned cache and an update path.
+What a visitor actually fetches, from a local `--release` build at
+`b87872b9b`, with gzip sizes as the wire cost:
+
+| Asset | Raw | Over the wire (gzip) | Share of transfer |
+|---|---:|---:|---:|
+| `openlierox.data` | 19529830 | 16358743 | 85% |
+| `openlierox.wasm` | 9702087 | 2778740 | 14% |
+| `openlierox.js` | 499266 | 107118 | 1% |
+| **First visit** | **~29.7 MB** | **~19.2 MB** | |
+
+The live release channel is a useful cross-check and a warning. At
+`/web-demo/release/20260717.2/` (commit `0a20c6d0a`) the wasm is 6023670
+raw / 1934435 gzipped — 3.7 MB smaller. That commit predates
+`21eb388cf`, which moved the build to single-threaded plain static
+hosting, so the difference is the price of `-sASYNCIFY=1`: whole-module
+instrumentation, about 3.7 MB raw and 0.85 MB compressed. That is what
+buys hosting anywhere with no COOP/COEP, and it is the size argument for
+finishing the JSPI work (#3), which replaces the instrumentation with a
+native stack switch.
+
+Three conclusions follow, and two of them contradict the first draft of
+this section.
+
+1. **The code is not the problem.** Even with ASYNCIFY the wasm is 2.8 MB
+   compressed — a fortieth of the debug binary, and a seventh of the
+   transfer. `-O3` already reaches the link step (verified in
+   `output/build/CMakeFiles/openlierox.dir/link.txt`), so `wasm-opt`
+   runs. There is no easy win left here. `-sASSERTIONS=1` and
+   `-sSTACK_OVERFLOW_CHECK=2` do stay on in release, which also turns on
+   `asyncify-asserts`; that is a deliberate safety net for the ASYNCIFY
+   work, and it is not what makes the page slow.
+2. **Hosting-layer compression is already done, not a lever.** GitHub
+   Pages returns `content-encoding: gzip` for `application/wasm` and for
+   the `.data` today. Brotli would still help — but Pages does not offer
+   it, and the `.data` is mostly PNG and OGG, which are already
+   compressed, so the remaining headroom is small. This was previously
+   written down as "the largest single lever"; it is not.
+3. **`cache-control: max-age=600` is the real problem.** Ten minutes.
+   The assets sit at immutable versioned paths, so they could be cached
+   for a year — but GitHub Pages does not allow header configuration, so
+   the only way to get durable caching is client-side.
+
+### Measures, in order of value per line of code
+
+- **`--use-preload-cache`, one flag.** `file_packager` stores the package
+  in IndexedDB keyed by `sha256(data)`
+  ([file_packager.py:784](https://github.com/emscripten-core/emscripten/blob/main/tools/file_packager.py)),
+  so the cache self-invalidates when content changes — no staleness risk.
+  `emcc` forwards the flag straight through
+  (`emcc.py:1331` → `link.py:3056`), so this is one line in
+  `target_link_options`. It removes 16.4 MB — 85% of the transfer — from
+  every repeat visit.
+- **A service worker for the wasm and JS.** This is not new
+  infrastructure: the live site already registers one
+  (`/web-demo/coi-serviceworker.js`) to inject COOP/COEP headers, which
+  this build no longer needs — it is single-threaded, with no
+  SharedArrayBuffer and no cross-origin-isolation requirement, so that
+  worker is a fetch interceptor doing nothing. Repurposing it as a
+  cache-first store for the versioned engine paths removes the remaining
+  2 MB from repeat visits, and gets offline play for free. Because the
+  paths are versioned, a stale cache cannot serve a mismatched build.
+- **A smaller boot stage.** The only lever that improves the *first*
+  visit. The stage is 26 MB across 2396 files
+  ([build-wasm.sh:100-145](build-wasm.sh#L100)), and about half of it is
+  not needed to reach the menu:
+
+  | Staged | Size | Why it is there | Deferrable? |
+  |---|---:|---|---|
+  | `promode` | 5.3 MB | Introduction campaign's later levels | Yes — fetch with the campaign |
+  | `levels/747.lxl`, `Base Fight.lxl` | 2.5 MB | Two of five sample maps | Yes — the comment only requires `levels/` to *exist* |
+  | `data/teeworlds` | 2.4 MB | `MapLoader_Teeworlds.cpp:1092` reads `data/teeworlds/mapres/*.png` | Yes — **no Teeworlds map is staged at all**, so this is dead weight today |
+  | `MW 1.0` | 1.3 MB | Introduction campaign | Yes |
+  | `GeoIP.dat` | 1.0 MB | `main.cpp:310` loads it unconditionally at boot | Yes — and see below |
+  | `data/flags` | 1.0 MB | Country flags for the internet server list | Yes |
+
+  That is ~13.5 MB of 26 MB, which roughly halves the first visit. The
+  GeoIP and flag pair is worth singling out: it exists to show a
+  country per server row, and behind a relay every browser player shares
+  the gateway's address anyway — the same shared-identity problem the ban
+  list has — so in P0 it is 2 MB spent on information that is wrong.
+- **Report wasm download progress.** The shell parses Emscripten's
+  `Downloading data... (x/y)` for the `.data`
+  ([shell/shell.html:207-217](shell/shell.html#L207)) but shows nothing
+  for the `.wasm`, which is the *first* thing a visitor waits on. Cheap,
+  and it changes perceived wait more than a megabyte does.
+- **Rejected: `--lz4`.** It compresses the package at build time, which
+  then defeats the server's gzip; lz4's ratio is worse than gzip's, so
+  transfer goes up. It buys lower peak memory during load, not a faster
+  download.
 - **Rejected: a lazy virtual filesystem.** `FS.createLazyFile` uses
   synchronous XHR on the main thread, which is deprecated and freezes the
   tab; filling the level list alone would issue 154 sequential blocking
-  reads, because listing opens every candidate. The WasmFS fetch backend
-  wants SharedArrayBuffer and worker proxying, which contradicts the
-  single-threaded, no-cross-origin-isolation design that lets this build
-  be hosted anywhere. And unlike the archive approach, it has to be
-  correct across every read path in the engine — `ifstream`, `SDL_RWops`,
-  libgd, libxml2, plus existence and size checks.
+  reads, because listing opens every candidate. ASYNCIFY does not rescue
+  this — it can unwind an arbitrary call, but stdio has no yield point to
+  unwind *from*, so every read path would need instrumenting. The WasmFS
+  fetch backend wants SharedArrayBuffer and worker proxying, which
+  contradicts the single-threaded, no-cross-origin-isolation design that
+  lets this build be hosted anywhere. Fetching at explicit, already
+  asynchronous points — the menu, joining a server — gets the same
+  benefit with none of that, and is what local import and the catalogue
+  already do.
+
+### Why growing the library does not grow the wait
+
+The whole point of the measurement above is that it decouples the two.
+Once content arrives on demand, the boot stage stops being "the game's
+content" and becomes "the smallest thing that reaches a playable menu" —
+a fixed cost that does not move when the catalogue goes from 20 items to
+2000. The library can then be arbitrarily large, because a player only
+ever pays for what they install, cached durably in IDBFS. That inverts
+today's arrangement, where every visitor downloads `promode` and two
+1 MB sample maps whether or not they play them.
+
+## A community layer
+
+If players browse and install content in-app, the interesting question
+stops being bundle size and becomes: who publishes, where does it live,
+what is the metadata, and who is accountable for it. Worth settling
+before any code, because the schema is the expensive part to change once
+content exists.
+
+### What the engine can express today
+
+Very little. `ModInfo` carries `name`, `path` and `typeShort` and nothing
+else ([src/game/Mod.h:17-31](../../src/game/Mod.h#L17)) — no version, no
+author, no checksum, no dependencies. Gusanos mods have a bare integer
+version file (`promode/promode.ver` contains `130`); LieroX `script.lgs`
+mods have no version at all. Any community layer has to add that
+metadata alongside the content, because the engine's own model cannot
+hold it.
+
+The distribution side is worse than "not implemented" — it is implemented
+and dead. Both entries in `cfg/downloadservers.txt` 404 (see above), and
+`CHttpDownloadManager` never starts its worker on Emscripten. So there is
+no working content-distribution channel on *any* platform to preserve
+compatibility with. That is unusually free ground.
+
+### Options
+
+- **Steam Workshop.** Scrutinized and rejected as infrastructure.
+  Workshop items are retrievable only through the Steam client, so a
+  browser build can never reach them — which defeats the purpose here.
+  The Steamworks SDK is a closed-source native library with no wasm
+  target, and a Steam app needs a submission fee and a legal entity to
+  own it, which a GPL community project does not have. It is still worth
+  reading for its *item model* — id, title, description, tags, version,
+  dependencies, author, preview image, visibility — which is the schema
+  a registry should broadly copy rather than invent.
+- **A static registry (recommended).** A separate repository holding one
+  small manifest per item — id, kind (`mod` / `level` / `skin` / `theme`),
+  title, author, version, size, `sha256`, licence, tags, preview image,
+  blob URL — plus a generated `index.json`, published to GitHub Pages,
+  with the blobs as release assets. Everything needed already works:
+  Pages sends `access-control-allow-origin: *` and gzips responses, so
+  the browser client reads it directly with no server, no CORS work and
+  no hosting bill. Submission is a pull request, which means moderation
+  is code review with an audit trail, and versioning is free. The cost is
+  friction — a contributor needs a GitHub account — and no in-app upload.
+- **A content API service** next to the relay gateway: in-app upload,
+  ratings, a moderation queue. This is the trap. It means accepting
+  arbitrary uploads and serving them to other players' machines, and OLX
+  content contains *executable script*, so it is a permanent moderation
+  obligation plus storage, abuse handling and uptime — a far larger
+  commitment than the relay itself. Defer until the registry demonstrates
+  there is submission volume worth the ops.
+- **Peer-to-peer only.** `CUdpFileDownloader` already fetches the joined
+  server's mod over the game channel. It works, needs no infrastructure,
+  and covers joining but not discovery. Keep it as the always-available
+  fallback regardless of which option above is chosen.
+
+### The code-execution question, and why the browser is the safe place
+
+Mods ship Lua and Gusanos script, so installing community content is
+running community code. The existing sandbox is narrower than it looks:
+the Lua context opens only `base`, `table`, `string` and `math`
+([src/gusanos/luaapi/context.cpp:127-130](../../src/gusanos/luaapi/context.cpp#L127))
+— no `io`, no `os`, no `package`, so a mod cannot open a file or spawn a
+process of its own accord.
+
+In the browser that composes with the wasm sandbox: the worst a hostile
+mod can do is corrupt the player's own IDBFS and crash the tab, and both
+are recoverable by clearing site data. On desktop the same script runs
+inside a native process with the engine's own file access. So the browser
+is not the risky place to open a community library — it is the *safest*
+place to pilot one, and the desktop client is what needs the stricter
+policy. Whatever is decided, the registry should record a licence per
+item and the client should verify `sha256` before installing; those two
+fields are what make the difference between a channel and a liability.
 
 ## Order of work
 
@@ -253,9 +422,11 @@ Once measured, in rough order of value per line of code:
    else is possible first.
 2. Local import and export, reusing the extracted installer. First
    visible win; no server involved.
-3. Measure the release bundle; apply hosting-layer compression and
-   `--use-preload-cache` if they pay.
+3. Cut the wait with the measured levers: `--use-preload-cache`, the
+   service worker, a smaller boot stage, wasm download progress.
 4. `emscripten_fetch` backend for `CHttp`, plus the per-frame
    `ProcessDownloads` pump.
-5. The catalogue, on the bundle's own origin.
+5. The catalogue, reading a static index.
 6. Verify `CUdpFileDownloader` once a real transport exists.
+7. Decide the community layer — registry schema and licence policy —
+   before the catalogue's index format hardens.
