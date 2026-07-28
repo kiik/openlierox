@@ -449,11 +449,21 @@ Two CDP-driven helpers under [build/wasm/](.) that drive a real
 Chrome and stream `Runtime.consoleAPICalled` /
 `Runtime.exceptionThrown` / `Log.entryAdded` events:
 
-- [run-headless.py](run-headless.py) — headless, scriptable.
+- [run-headless.py](run-headless.py) — headless, scriptable,
+  and also the browser build's regression check.
   ```
   python3 build/wasm/run-headless.py [duration_s] [shot_every_s] \
       "at:8:CLICK:160,160" "at:12:KEY:Return" "at:14:SHOT:foo"
   ```
+  It serves the bundle itself (`build/wasm/output` by default) unless
+  something already listens on the serve port, and exits nonzero on a
+  page exception, on an error-level log entry, or if the engine never
+  printed its boot-complete line — so a build that traps, or boots
+  halfway and stops, fails instead of looking fine.
+  `package-wasm.yml` runs it on the staged bundle.
+  Override `OLX_WASM_ROOT`, `OLX_HEADLESS_SERVE_PORT`,
+  `OLX_HEADLESS_DEBUG_PORT`, `OLX_HEADLESS_PROFILE`,
+  `OLX_HEADLESS_SHOTS` or `OLX_HEADLESS_URL` to run two at once.
   Click coordinates are SDL canvas-internal; the harness translates
   them to viewport coords through the live `getBoundingClientRect`.
   Mouse presses use `Input.synthesizeTapGesture` (a real platform
