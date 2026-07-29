@@ -61,6 +61,18 @@ def worm_ids():
     return command("getwormlist")
 
 
+def bonus_ids():
+    """Return the ids of the bonuses this instance sees on the map.
+
+    ``getBonusList`` reports one ``"id type x y"`` entry per bonus,
+    taken from whichever view the instance owns:
+    the authoritative array on a server, its own received state on a client.
+    The same helper therefore answers both
+    "what is on the map" and "what did this client actually receive".
+    """
+    return [entry.split()[0] for entry in command("getBonusList") if entry.strip()]
+
+
 def worm_state(wid):
     """Return a worm's replicated state as a dict, or None if unavailable.
 

@@ -18,6 +18,7 @@ so one script serves every scenario:
 ``OLX_WEAPON_SEL_TIME``      seconds before unready clients are kicked
 ``OLX_START_WHEN_WORMS``     worms that must be in the lobby before we start (default 1)
 ``OLX_RUN_SECONDS``          how long to keep the server loop alive
+``OLX_SPAWN_BONUSES``        bonuses to place once the round is running
 ===========================  =========================================
 """
 
@@ -26,7 +27,8 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _olx_pipe import command, emit, emit_worm_states, game_state, worm_ids  # noqa: E402
+from _olx_pipe import (  # noqa: E402
+    bonus_ids, command, emit, emit_worm_states, game_state, worm_ids)
 
 
 def main():
@@ -80,6 +82,7 @@ def main():
 
     emit_state = os.environ.get("OLX_EMIT_STATE")
     spawn_close = os.environ.get("OLX_SPAWN_CLOSE")
+    spawn_bonuses = int(os.environ.get("OLX_SPAWN_BONUSES", "0"))
 
     start_when = int(os.environ.get("OLX_START_WHEN_WORMS", "1"))
     started = False
@@ -107,6 +110,16 @@ def main():
                     for wid in worms:
                         command('spawnWorm %s "%s,%s"' % (wid, spot[0], spot[1]))
                     emit("SERVER_SPAWN_CLOSE %s,%s" % (spot[0], spot[1]))
+            # Place the bonuses now, before any late joiner has connected,
+            # so whatever such a joiner ends up seeing
+            # can only have reached it as part of joining.
+            for _ in range(spawn_bonuses):
+                command("spawnBonus")
+            if spawn_bonuses:
+                emit("SERVER_SPAWNBONUS %d" % spawn_bonuses)
+        if playing and spawn_bonuses:
+            bonuses = bonus_ids()
+            emit("SERVER_BONUSES n=%d ids=%s" % (len(bonuses), ",".join(bonuses)))
         if playing and emit_state:
             states = emit_worm_states("SERVER")
             total_dmg = sum(s["dmg"] for s in states.values())

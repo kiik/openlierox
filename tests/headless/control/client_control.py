@@ -12,6 +12,7 @@ Environment variables:
 ``OLX_CLIENT_NAME``                   short label used in the emitted markers
 ``OLX_RUN_SECONDS``                   how long to keep observing
 ``OLX_LEAVE_SIGNAL_FILE``             once this file exists, disconnect and quit
+``OLX_EMIT_BONUSES``                  report the bonuses this client sees
 ====================================  =========================================
 """
 
@@ -20,13 +21,15 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _olx_pipe import command, emit, emit_worm_states, game_state, worm_ids  # noqa: E402
+from _olx_pipe import (  # noqa: E402
+    bonus_ids, command, emit, emit_worm_states, game_state, worm_ids)
 
 
 def main():
     name = os.environ.get("OLX_CLIENT_NAME", "client")
     leave_signal = os.environ.get("OLX_LEAVE_SIGNAL_FILE")
     emit_state = os.environ.get("OLX_EMIT_STATE")
+    emit_bonuses = os.environ.get("OLX_EMIT_BONUSES")
     reached_playing = False
     combat = False
     prev_worms = set()
@@ -49,6 +52,13 @@ def main():
         if state == "Playing" and not reached_playing:
             emit("CLIENT[%s] PLAYING" % name)
             reached_playing = True
+        # Report this client's own view of the bonuses lying on the map,
+        # which for a late joiner is empty
+        # unless the server replayed them as part of the join.
+        if reached_playing and emit_bonuses:
+            bonuses = bonus_ids()
+            emit("CLIENT[%s] BONUSES n=%d ids=%s"
+                 % (name, len(bonuses), ",".join(bonuses)))
         # Report this client's own view of every worm's state, so a test can
         # check it against the server's view and confirm the game state syncs.
         if reached_playing and emit_state:

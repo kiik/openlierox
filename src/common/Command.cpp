@@ -22,6 +22,7 @@
 #include "Debug.h"
 #include "CServer.h"
 #include "CClient.h"
+#include "CBonus.h"
 #include "OLXConsole.h"
 #include "StringUtils.h"
 #include "sex.h"
@@ -2256,6 +2257,46 @@ void Cmd_getGameState::exec(CmdLineIntf* caller, const std::vector<std::string>&
 	caller->pushReturnArg(to_string(game.gameOver));
 	caller->pushReturnArg(to_string(game.isServer()));
 	caller->pushReturnArg(to_string(game.isLocalGame()));
+}
+
+COMMAND(getBonusList, "get the bonuses this instance sees on the map", "", 0, 0);
+void Cmd_getBonusList::exec(CmdLineIntf* caller, const std::vector<std::string>& params) {
+	// On the server, the authoritative array;
+	// on a client, that client's own view,
+	// so the same command answers both
+	// "what is on the map" and "what did this client receive".
+	CBonus* bonus = NULL;
+	if(game.isServer() && cServer)
+		bonus = cServer->getBonusList();
+	else if(cClient)
+		bonus = cClient->getBonusList();
+	if(!bonus) return;
+
+	for(int i = 0; i < MAX_BONUSES; i++, bonus++) {
+		if(!bonus->getUsed())
+			continue;
+		caller->pushReturnArg(itoa(i)
+			+ " " + std::string(bonus->getType() == BNS_HEALTH ? "health" : "weapon")
+			+ " " + itoa((int)bonus->getPosition().x)
+			+ " " + itoa((int)bonus->getPosition().y));
+	}
+}
+
+COMMAND(spawnBonus, "spawn a bonus on the map (test hook)", "", 0, 0);
+void Cmd_spawnBonus::exec(CmdLineIntf* caller, const std::vector<std::string>& params) {
+	if(game.isClient() || !cServer || !cServer->isServerRunning()) {
+		caller->writeMsg(name + " works only as server");
+		return;
+	}
+	if(!game.gameMap() || !game.gameScript()) {
+		caller->writeMsg(name + " needs a loaded map and mod");
+		return;
+	}
+	// Deliberately independent of the Bonuses setting,
+	// which only drives the periodic spawner and the expiry check:
+	// with it off, a bonus placed here stays put and nothing else appears,
+	// which is what a test needs to reason about a fixed set of bonuses.
+	cServer->SpawnBonus();
 }
 
 

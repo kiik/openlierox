@@ -149,6 +149,7 @@ public:
 	void		SimulateGame();
 	
 	void		SpawnBonus();
+	CBonus*		getBonusList()		{ return cBonuses; }
 	void		WormShoot(CWorm *w);
 	void		WormShootEnd(CWorm* w, const weapon_t* weapon);
     void        RecheckGame();
