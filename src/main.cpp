@@ -271,7 +271,14 @@ startpoint:
 		return -1;
 	}
 
+#ifndef __EMSCRIPTEN__
 	teeStdoutFile(GetWriteFullFileName("logs/OpenLieroX - " + GetDateTimeFilename() + ".txt", true));
+#else
+	// No log file in the browser: teeStdoutFile is a stub there
+	// (src/common/TeeStdoutHandler.cpp:24) because stdout already reaches the
+	// console. Skip the path too, so we don't create a logs dir in IDBFS --
+	// a log per session, kept forever in IndexedDB, is nobody's plan.
+#endif
 	activateStdinCLIHistory();
 #if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
 	CrashHandler::init();

@@ -562,6 +562,7 @@ void CClient::FinishMapDownloads()
 	// Check that the file exists and is ok
 	std::string levelname = CMap::GetLevelName(sMapDownloadName);
 	if (levelname != "")  {
+		FlushPersistentUserData(); // the map is on disk now; keep it there
 		if (getGameLobby()[FT_Map].as<LevelInfo>()->path == sMapDownloadName)  {
 			getGameLobby().overwrite[FT_Map] = infoForLevel(sMapDownloadName); // reset to add levelname if possible
 			if (tMapDlCallback)
@@ -641,8 +642,9 @@ void CClient::FinishModDownloads()
 			fclose(fileWrite);
 			zip_fclose(fileInZip);
 		};
-		
+
 		zip_close(zipfile);
+		FlushPersistentUserData(); // the mod is extracted now; keep it there
 	}
 
 	// Check that the script.lgs file is available

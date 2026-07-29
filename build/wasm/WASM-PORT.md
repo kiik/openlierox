@@ -27,7 +27,7 @@ guards.
 | Display scaling | Fills the viewport (aspect-preserving) + sharp scaling |
 | LAN / internet networking | Stubbed; UDP unavailable in browsers |
 | Fullscreen | Disabled by master switch (see below) |
-| Persistent user data | In-memory only (MEMFS, wiped on reload) |
+| Persistent user data | Kept in IndexedDB (IDBFS at `~/.OpenLieroX`) |
 
 ## Quick start
 
@@ -297,6 +297,10 @@ All `__EMSCRIPTEN__` guards in the tree, by purpose:
 - [src/common/FindFile.cpp:490](../../src/common/FindFile.cpp#L490) —
   search paths set to `/gamedir` (preloaded) and
   `${HOME}/.OpenLieroX`.
+- [src/common/FindFile.cpp:550](../../src/common/FindFile.cpp#L550) —
+  `GetWriteBaseDir()` returns `${HOME}/.OpenLieroX` directly instead of
+  the first search path, so a `SearchPath1..N` list saved in a player's
+  `options.cfg` cannot move where writes land.
 
 **Game state**
 
@@ -322,6 +326,7 @@ Set on the link line in [CMakeLists.txt](CMakeLists.txt):
 | `-sASSERTIONS=1` | Keep Emscripten's runtime sanity checks (kept on in release too). |
 | `-sEXIT_RUNTIME=0` | Engine stays alive across matches. |
 | `-sFORCE_FILESYSTEM=1` | The preload archive and `FS` API are always available even if no obvious filesystem call is linked. |
+| `-lidbfs.js` | Links IDBFS, which the shell mounts at `~/.OpenLieroX`; not included by default. |
 | `-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS','callMain']` | Used by the shell + harnesses. |
 
 ## Game-data preload
@@ -473,10 +478,11 @@ isn't rejected as forbidden cross-origin.
 - **No real networking.** UDP isn't available; LAN / internet play
   requires WebSockets or WebRTC, which HawkNL doesn't speak. The
   loopback driver covers single-player only.
-- **No persistent user data.** Settings, downloaded mods, and
-  player profiles live in MEMFS and are wiped on tab reload. IDBFS
-  mounting under `~/.OpenLieroX` is the obvious follow-up but isn't
-  wired up.
+- **Persistence is per checkpoint, not continuous.** User data lives on
+  IDBFS at `~/.OpenLieroX` and reaches IndexedDB only when
+  `FlushPersistentUserData()` runs — options save, profile save, finished
+  content download. A write outside those paths is still lost if the tab
+  is closed, since `-sEXIT_RUNTIME=0` leaves no shutdown hook.
 - **Audio gating.** Chrome's autoplay policy blocks the first
   AudioContext until a user gesture; the OpenAL JS backend handles
   the unblock once the user clicks the canvas.

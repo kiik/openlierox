@@ -35,6 +35,10 @@
 #include <SDL_system.h>
 #endif
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 
 #ifdef WIN32
 #	ifndef _WIN32_IE
@@ -490,8 +494,10 @@ void InitBaseSearchPaths() {
 	}
 #elif defined(__EMSCRIPTEN__)
 	// The build script preloads share/gamedir at /gamedir on the
-	// virtual MEMFS, and we chdir to / in main(). Persistent user data
-	// is mounted on IDBFS at /home/web_user (Emscripten's musl HOME).
+	// virtual MEMFS, and we chdir to / in main(). The shell mounts IDBFS at
+	// ${HOME}/.OpenLieroX (build/wasm/shell/shell.html), and that is where
+	// every write goes -- see GetWriteBaseDir(). The preload stays first for
+	// reads, so a shipped file always wins over a half-written one.
 	AddToFileList(&basesearchpaths, "/gamedir");
 	AddToFileList(&basesearchpaths, "${HOME}/.OpenLieroX");
 #elif defined(__APPLE__)
@@ -532,6 +538,32 @@ std::string GetFirstSearchPath() {
 	else
 		return GetHomeDir();
 }
+
+// The dir we write into.
+// Everywhere but the browser that is the first searchpath, the user's own
+// OpenLieroX dir. On Emscripten it must not follow the searchpath order:
+// InitSearchPaths puts SearchPath1..N from cfg/options.cfg ahead of the base
+// paths (src/client/Options.cpp:103) and saving writes that list back out
+// (:593), so whatever order a first run happened to have would be frozen in
+// every returning player's config. Name the IDBFS mount directly instead;
+// it is the only writable dir that survives a reload.
+static std::string GetWriteBaseDir() {
+#ifdef __EMSCRIPTEN__
+	return GetHomeDir() + "/.OpenLieroX";
+#else
+	return GetFirstSearchPath();
+#endif
+}
+
+#ifdef __EMSCRIPTEN__
+void FlushPersistentUserData() {
+	EM_ASM({
+		FS.syncfs(false, function(err) {
+			if(err) console.error("OpenLieroX: could not persist user data: " + err);
+		});
+	});
+}
+#endif
 
 size_t FileSize(const std::string& path)
 {
@@ -626,7 +658,7 @@ std::string GetWriteFullFileName(const std::string& path, bool create_nes_dirs) 
 		errors << "we want to write somewhere, but don't know where => we are writing to your temp-dir now..." << endl;
 		tmp = GetTempDir() + "/" + path;
 	} else {
-		GetExactFileName(GetFirstSearchPath(), tmp);
+		GetExactFileName(GetWriteBaseDir(), tmp);
 
 		CreateRecDir(tmp);
 		if(!CanWriteToDir(tmp)) {

@@ -237,6 +237,8 @@ void SaveProfiles()
 		SaveProfile(fp, *p);
 
 	fclose(fp);
+
+	FlushPersistentUserData();
 }
 
 
