@@ -197,11 +197,20 @@ Required fields. A client must reject an item that is missing any of
 them, or whose value fails the stated constraint -- reject the *item*,
 not the index.
 
+Two constraints are cross-item rather than per-value, and a client checks
+them as it reads the index rather than trusting the registry to have done
+so: `id` unique across the index, and `installName` unique among items of
+the same `kind`. On a collision the client keeps the first item and rejects
+the later one. CI enforces both on submission, but an index that has been
+hand-edited, mirrored or forked can violate them, and the consequence of
+not checking is one item silently overwriting another item's directory at
+extraction time.
+
 | Field | Type | Constraint |
 |---|---|---|
 | `id` | string | `[a-z0-9][a-z0-9._-]{0,63}`. Stable forever. Unique across the index. A registry identifier only -- it is **not** the on-disk name. |
 | `kind` | string | One of the values in [Content kinds](#content-kinds). |
-| `installName` | string | The exact file or directory name the item creates in its target directory. 1..64 chars. No `/`, no `\`, no `..`, not `.`; no control characters, no leading or trailing space or dot. Case and spaces are preserved verbatim -- see below. |
+| `installName` | string | The exact file or directory name the item creates in its target directory. 1..64 chars. No `/`, no `\`, no `..`, not `.`; no control characters, no leading or trailing space or dot; not a Windows reserved device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1`..`COM9`, `LPT1`..`LPT9`, with or without an extension). Unique among items of the same `kind`, compared case-folded. Case and spaces are preserved verbatim -- see below. |
 | `title` | string | 1..80 chars, display name. May differ from `id` and may contain spaces and punctuation. |
 | `author` | string | 1..80 chars. Who made it. Accountability, not decoration -- see [Licence](#licence-and-redistribution). |
 | `version` | string | 1..32 chars, `[0-9A-Za-z.+-]`. **Opaque.** See below. |
@@ -251,6 +260,13 @@ so case alone would probably survive. Spaces, punctuation and the
 player-visible label would not. Keeping `id` as a slug for URLs, CI and
 dependency references, and `installName` as the byte-exact on-disk name, is
 the only arrangement that satisfies both.
+
+That same case-insensitive lookup is why the uniqueness rule compares
+case-folded. `Classic` and `classic` are distinct strings but resolve to
+one directory through `GetExactFileName`, and collide outright on the
+case-insensitive filesystems Windows and macOS use by default. A
+byte-comparison rule would admit both and let the second overwrite the
+first.
 
 For `format: "zip"`, every archive entry must be under
 `<installName>/`. For `format: "file"`, `installName` is the filename
@@ -896,7 +912,8 @@ workflow and Pages.
      required field present and matching its constraint.
    - `id` is unique, well-formed, and not previously used by a different
      item; `installName` is well-formed, and is unique among items of the
-     same `kind`, because two items cannot own one directory.
+     same `kind` compared case-folded, because two items cannot own one
+     directory.
    - The blob exists at the path `url` resolves to; its byte length
      equals `size`; its SHA-256 equals `sha256`.
    - `licence` is in the allowlist, or is `custom` with a `licenceUrl`.
@@ -999,7 +1016,8 @@ The short version, for the client implementer:
 - Required fields exactly as tabulated: `id`, `kind`, `installName`,
   `title`, `author`, `version`, `licence`, `format`, `url`, `size`,
   `sha256`. Unknown fields ignored; unknown `kind` or `format` skipped;
-  a greater `schema` refused.
+  a greater `schema` refused; duplicate `id`, or duplicate case-folded
+  `installName` within one `kind`, rejected as it is read.
 - Blobs from the same origin, at immutable content-addressed paths, so
   they can be cached in the persistent directory by hash and never
   refetched.
