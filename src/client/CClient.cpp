@@ -622,12 +622,21 @@ void CClient::FinishModDownloads()
 			return;
 		}
 		
+		// Confine extraction to the mod's own directory, separator included.
+		// A bare prefix test is not enough, and the mod name comes from the
+		// server: advertise the mod as "s" and the entry "startup.lua" matches
+		// at position 0, so it is written to the game root -- where
+		// initLuaGlobal runs every startup*.lua it finds in the privileged
+		// global Lua context. An empty name yields "/", which matches no
+		// relative entry, so that case is closed too.
+		const std::string sModDownloadDir = stringtolower(sModDownloadName) + "/";
+
 		for( int f = 0; f < zip_get_num_files(zipfile); f++ )
 		{
 			const char * fname = zip_get_name(zipfile, f, 0);
 			// Check if file is valid and is inside mod dir and not already exist
 			if( fname == NULL || std::string(fname).find("..") != std::string::npos ||
-				stringtolower( fname ).find( stringtolower(sModDownloadName) ) != 0 ||
+				stringtolower( fname ).find( sModDownloadDir ) != 0 ||
 				IsFileAvailable(fname, false) )
 				continue;
 			zip_file * fileInZip = zip_fopen_index(zipfile, f, 0);

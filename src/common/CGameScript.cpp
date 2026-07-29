@@ -2318,15 +2318,26 @@ bool Proj_EventAndAction::readFromIni(CGameScript* gs, const std::string& dir, c
 bool Proj_EventAndAction::read(CGameScript* gs, FILE* fp) {
 	Uint32 eventNum = 0;
 	fread_endian<Uint32>(fp, eventNum);
-	events.resize(eventNum);
-	
-	for(Uint32 i = 0; i < eventNum; ++i)
-		if(!events[i].read(gs, fp)) {
+
+	// Don't allocate on eventNum. It comes straight out of the file, so a
+	// truncated or hostile script can ask for billions of entries and the
+	// resize alone exhausts memory before a single event is parsed. Grow as
+	// each event actually reads instead, which bounds the allocation by the
+	// bytes really present: at EOF fread_endian leaves the type at PET_UNSET,
+	// get() returns NULL, and the loop stops.
+	events.clear();
+	events.reserve(eventNum < 64 ? eventNum : 64);
+
+	for(Uint32 i = 0; i < eventNum; ++i) {
+		Proj_Event event;
+		if(!event.read(gs, fp)) {
 			errors << "Proj_EventAndAction: error while reading game script projectile actions" << endl;
 			events.clear(); // would crash otherwise
 			return false;
 		}
-	
+		events.push_back(event);
+	}
+
 	return Proj_Action::read(gs, fp);
 }
 
