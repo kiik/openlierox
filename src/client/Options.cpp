@@ -687,8 +687,10 @@ void GameOptions::SaveToDisc(const std::string& cfgfilename)
 	}
 
 	fprintf(fp, "\n\n# End of options\n\n");
-	
+
     fclose(fp);
+
+	FlushPersistentUserData();
 }
 
 void GameOptions::SaveSectionToDisc(const std::string& presection, const std::string& filename) {

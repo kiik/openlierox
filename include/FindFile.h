@@ -169,11 +169,22 @@ void	InitBaseSearchPaths();
 // if searchpath!=NULL, it will place there the searchpath
 std::string GetFullFileName(const std::string& path, std::string* searchpath = NULL);
 
-// this give always a dir like searchpath[0]/path, but it ensures:
+// this give always a dir like GetWriteBaseDir()/path, but it ensures:
 // - the filename is correct, if the file exists
 // - it replaces ${var} with ReplaceFileVariables
 // if create_nes_dirs is set, the nessecary dirs will be created
 std::string GetWriteFullFileName(const std::string& path, bool create_nes_dirs = false);
+
+// Push everything written under the write dir out to persistent storage.
+// Only the browser build needs this: its write dir is an IDBFS mount that
+// lives in memory until FS.syncfs() copies it into IndexedDB, and
+// -sEXIT_RUNTIME=0 plus a closed tab is no shutdown hook to rely on.
+// Call it right after user data has been written; a no-op elsewhere.
+#ifdef __EMSCRIPTEN__
+void	FlushPersistentUserData();
+#else
+inline void	FlushPersistentUserData() {}
+#endif
 
 // replacement for the simple fopen
 // this does a search on all searchpaths for the file and opens the first one; if none was found, NULL will be returned

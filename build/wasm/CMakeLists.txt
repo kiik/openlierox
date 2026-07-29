@@ -319,6 +319,10 @@ target_link_options(openlierox PRIVATE
     "-sASSERTIONS=1"
     "-sEXIT_RUNTIME=0"
     "-sFORCE_FILESYSTEM=1"
+    # IDBFS is not linked in by default. The shell mounts it at
+    # ${HOME}/.OpenLieroX in preRun so user data survives a reload;
+    # without this flag the IDBFS object doesn't exist and the mount throws.
+    "-lidbfs.js"
     "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS','callMain']"
     "--preload-file" "${OLX_PRELOAD_DIR}/gamedir@/gamedir"
     "--shell-file" "${WASM_DIR}/shell/shell.html")

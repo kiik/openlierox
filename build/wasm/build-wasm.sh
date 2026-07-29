@@ -108,6 +108,13 @@ if [ "$SKIP_DATA" -eq 0 ]; then
     GD="$OLX_ROOT/share/gamedir"
     SD="$DATA_STAGE/gamedir"
     cp -a "$GD/cfg"           "$SD/cfg"
+    # Files the game writes back must not also be shipped in the preload:
+    # /gamedir is searched before the persistent dir (InitBaseSearchPaths in
+    # src/common/FindFile.cpp), so a bundled copy would shadow the saved one
+    # forever. Both have safe defaults when absent -- LoadProfiles recreates
+    # the standard profiles (src/client/ProfileSystem.cpp:140), and the
+    # shipped wpnrest.dat is empty anyway, i.e. no restrictions.
+    rm -f "$SD/cfg/players.dat" "$SD/cfg/wpnrest.dat"
     cp -a "$GD/data"          "$SD/data"
     cp -a "$GD/scripts"       "$SD/scripts"
     cp -a "$GD/themes"        "$SD/themes"

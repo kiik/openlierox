@@ -172,7 +172,35 @@
     // ignores updates once the "Starting…" latch is set.)
     window.olxOnEngineReady = () => { clearStartWatchdog(); statusEl.style.display = "none"; };
 
+    // Persistent user data. Everything OLX writes goes to
+    // ${HOME}/.OpenLieroX (GetWriteBaseDir in src/common/FindFile.cpp), so
+    // that is where IDBFS is mounted; the preloaded /gamedir stays on MEMFS
+    // and is thrown away with the tab, which is what we want for it.
+    const USER_DIR = "/home/web_user/.OpenLieroX";
+    function mountUserDir() {
+      try {
+        FS.mkdirTree(USER_DIR);
+        FS.mount(IDBFS, {}, USER_DIR);
+      } catch (e) {
+        // No IndexedDB (private mode, blocked storage) — play on, unsaved.
+        console.error("Persistent storage unavailable (" + e +
+                      "); nothing from this session will be saved.");
+        return;
+      }
+      // The engine writes before it reads anything back — GameOptions::Init()
+      // already creates the config dir (src/client/Options.cpp:380) — so the
+      // IndexedDB contents have to be in place before main() runs. Hold a run
+      // dependency until the populating syncfs reports back.
+      addRunDependency("olx-idbfs");
+      FS.syncfs(true, (err) => {
+        if (err) console.error("Loading persistent user data failed: " + err);
+        else     console.log("Persistent user data mounted at " + USER_DIR);
+        removeRunDependency("olx-idbfs");
+      });
+    }
+
     var Module = {
+      preRun: [mountUserDir],
       canvas: (() => {
         const c = document.getElementById("canvas");
         c.addEventListener("webglcontextlost", (e) => {
